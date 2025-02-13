@@ -1,0 +1,19 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "asyncpraw>=7.8.1",
+    "backoff>=2.2.1",
+    "openai>=1.63.0",
+    "praw>=7.8.1",
+    "pydantic>=2.10.6",
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.3",
+    "python-telegram-bot>=21.10",
+    "requests>=2.32.3",
+    "sendgrid>=6.11.0",
+    "tweepy>=4.15.0",
+    "twilio>=9.4.5",
+]

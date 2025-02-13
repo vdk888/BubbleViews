@@ -1,0 +1,23 @@
+{
+    "reddit": {
+        "client_id": "yJIWsD6xd1GPaM40E2toog",
+        "client_secret": "ZJYksoThu9qp_FefTTPFDVonpkrofg",
+        "user_agent": "python:MyRedditBot:v1.0 (by /u/ImprovementMain7109)",
+        "username": "ImprovementMain7109",
+        "password": "ImprovementMain7109"
+    },
+    "telegram": {
+        "token": "your_telegram_bot_token",
+        "chat_id": "your_telegram_chat_id"
+    },
+    "twitter": {
+        "bearer_token": "AAAAAAAAAAAAAAAAAAAAAMLFMAEAAAAArpOCnJ%2Bq6%2FLX%2FX%2BrU%2F%2FVQk8%3DxtUHkJQBWIBjGtRJyKlHEUkLplRUEL2IlKN8vPvvtsIFn4bpD",
+        "api_key": "ZZn9AWV10aQC3sqBtFDDZuK",
+        "api_secret": "zmuA4ndD6yUMn18jkejpMxuZFua9qAJECM8IEH0fa9p5vrYdnI",
+        "access_token": "122759884-57qE1YYxcb9DQIOP9DqHV9SF1T7UQso7sZXgFq74",
+        "access_token_secret": "NwrexVD6rTTNKyHEPnQuaWBmTSJN9ByThyGGCg552d7tK"
+    },
+    "openrouter": {
+        "api_key": "sk-proj-guyaw7kLKumUkummEC6T3B1bkFJpBEwrqX22w7dEhn4Wxnq"
+    }
+}
