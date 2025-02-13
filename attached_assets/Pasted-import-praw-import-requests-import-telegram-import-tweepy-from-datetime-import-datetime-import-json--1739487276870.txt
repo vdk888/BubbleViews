@@ -1,0 +1,177 @@
+import praw
+import requests
+import telegram
+import tweepy
+from datetime import datetime
+import json
+import asyncio
+from collections import defaultdict
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class NewsAnalyzer:
+    def __init__(self, config):
+        """Initialize with API configurations"""
+        self.reddit = praw.Reddit(
+            client_id=config['reddit']['client_id'],
+            client_secret=config['reddit']['client_secret'],
+            user_agent=config['reddit']['user_agent'],
+            username=config['reddit']['username'],
+            password=config['reddit']['password']
+        )
+        
+        self.telegram_bot = telegram.Bot(token=config['telegram']['token'])
+        self.telegram_chat_id = config['telegram']['chat_id']
+        
+        # Twitter API v2
+        self.twitter_client = tweepy.Client(
+            bearer_token=config['twitter']['bearer_token'],
+            consumer_key=config['twitter']['api_key'],
+            consumer_secret=config['twitter']['api_secret'],
+            access_token=config['twitter']['access_token'],
+            access_token_secret=config['twitter']['access_token_secret']
+        )
+        
+        self.openrouter_api_key = config['openrouter']['api_key']
+        
+        # Subreddits to monitor
+        self.subreddits = [
+            'news', 'worldnews', 'politics', 'conservative',
+            'liberal', 'technology', 'science', 'environment'
+        ]
+
+    async def get_top_news(self):
+        """Fetch and score top news from various subreddits"""
+        news_items = []
+        
+        for subreddit_name in self.subreddits:
+            try:
+                subreddit = self.reddit.subreddit(subreddit_name)
+                for submission in subreddit.hot(limit=10):
+                    # Calculate media power score
+                    score = self._calculate_media_power(submission)
+                    
+                    news_items.append({
+                        'title': submission.title,
+                        'url': submission.url,
+                        'score': score,
+                        'subreddit': subreddit_name,
+                        'upvote_ratio': submission.upvote_ratio,
+                        'num_comments': submission.num_comments
+                    })
+            except Exception as e:
+                logger.error(f"Error fetching from {subreddit_name}: {str(e)}")
+        
+        # Sort by score and get top 5
+        return sorted(news_items, key=lambda x: x['score'], reverse=True)[:5]
+
+    def _calculate_media_power(self, submission):
+        """Calculate a media power score based on various metrics"""
+        engagement_score = submission.score + (submission.num_comments * 2)
+        time_factor = 1 / (datetime.utcnow().timestamp() - submission.created_utc + 1)
+        controversy_factor = abs(0.5 - submission.upvote_ratio) * 2
+        
+        return engagement_score * time_factor * (1 + controversy_factor)
+
+    async def get_mckenna_analysis(self, news_item):
+        """Get Terence McKenna-style analysis using OpenRouter API"""
+        prompt = f"""You are Terence McKenna, the ethnobotanist, mystic, and psychedelic advocate. 
+        Please analyze this news story through your unique perspective, incorporating your ideas about 
+        timewave zero, the archaic revival, and the evolution of human consciousness.
+        
+        News Story: {news_item['title']}
+        
+        Provide your analysis in your characteristic speaking style, including references to your key concepts."""
+
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.openrouter_api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "gemini-2.0-flash",
+                "messages": [{"role": "user", "content": prompt}]
+            }
+        )
+        
+        return response.json()['choices'][0]['message']['content']
+
+    async def send_telegram_validation(self, news_item, analysis):
+        """Send analysis to Telegram and get validation"""
+        message = f"""
+📰 *{news_item['title']}*
+
+McKenna's Analysis:
+{analysis}
+
+Reply with:
+/post - to share across platforms
+/skip - to skip this analysis
+        """
+        
+        await self.telegram_bot.send_message(
+            chat_id=self.telegram_chat_id,
+            text=message,
+            parse_mode='Markdown',
+            reply_markup=telegram.InlineKeyboardMarkup([
+                [
+                    telegram.InlineKeyboardButton("Post", callback_data="post"),
+                    telegram.InlineKeyboardButton("Don't Post", callback_data="skip")
+                ]
+            ])
+        )
+
+    async def post_to_platforms(self, news_item, analysis):
+        """Post approved content to social media platforms"""
+        try:
+            # Post to Twitter
+            tweet_text = f"{news_item['title']}\n\nMcKenna's perspective: {analysis[:220]}..."
+            self.twitter_client.create_tweet(text=tweet_text)
+            
+            # Post to Reddit
+            target_subreddits = ['Psychonaut', 'RationalPsychonaut', 'Futurology']
+            for subreddit_name in target_subreddits:
+                subreddit = self.reddit.subreddit(subreddit_name)
+                title = f"Terence McKenna's perspective on: {news_item['title']}"
+                subreddit.submit(title=title, selftext=analysis)
+            
+            logger.info("Successfully posted to all platforms")
+            
+        except Exception as e:
+            logger.error(f"Error posting to platforms: {str(e)}")
+
+async def main():
+    # Load configuration
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+    
+    analyzer = NewsAnalyzer(config)
+    
+    while True:
+        try:
+            # Get top news
+            news_items = await analyzer.get_top_news()
+            
+            for news_item in news_items:
+                # Get McKenna's analysis
+                analysis = await analyzer.get_mckenna_analysis(news_item)
+                
+                # Send to Telegram for validation
+                await analyzer.send_telegram_validation(news_item, analysis)
+                
+                # Wait for some time before processing next item
+                await asyncio.sleep(300)  # 5 minutes
+                
+        except Exception as e:
+            logger.error(f"Error in main loop: {str(e)}")
+            await asyncio.sleep(600)  # 10 minutes on error
+        
+        # Wait before next cycle
+        await asyncio.sleep(3600)  # 1 hour
+
+if __name__ == "__main__":
+    asyncio.run(main())
