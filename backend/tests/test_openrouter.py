@@ -15,6 +15,10 @@ import sys
 import os
 from pathlib import Path
 
+# Skip by default to avoid accidental live API calls/costs.
+if os.getenv("OPENROUTER_LIVE_TEST") != "1":
+    sys.exit("OpenRouter live test skipped (set OPENROUTER_LIVE_TEST=1 to run)")
+
 # Set UTF-8 encoding for Windows console
 if sys.platform == 'win32':
     os.environ['PYTHONIOENCODING'] = 'utf-8'

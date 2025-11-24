@@ -44,9 +44,15 @@ class SQLiteMemoryStore(IMemoryStore):
     All operations enforce persona isolation and include proper error handling.
     """
 
-    def __init__(self):
-        """Initialize memory store with embedding service."""
+    def __init__(self, session_maker=async_session_maker):
+        """
+        Initialize memory store with embedding service.
+
+        Args:
+            session_maker: async session factory (injectable for tests/overrides)
+        """
         self.embedding_service = get_embedding_service()
+        self.session_maker = session_maker
 
     async def query_belief_graph(
         self,
@@ -63,7 +69,7 @@ class SQLiteMemoryStore(IMemoryStore):
         if min_confidence is not None and not (0.0 <= min_confidence <= 1.0):
             raise ValueError(f"min_confidence must be between 0.0 and 1.0, got {min_confidence}")
 
-        async with async_session_maker() as session:
+        async with self.session_maker() as session:
             # Build query for belief nodes
             stmt = select(BeliefNode).where(BeliefNode.persona_id == persona_id)
 
@@ -152,7 +158,7 @@ class SQLiteMemoryStore(IMemoryStore):
         if not (0.0 <= confidence <= 1.0):
             raise ValueError(f"confidence must be between 0.0 and 1.0, got {confidence}")
 
-        async with async_session_maker() as session:
+        async with self.session_maker() as session:
             async with session.begin():
                 # Fetch belief with current stance
                 stmt = (
@@ -260,7 +266,7 @@ class SQLiteMemoryStore(IMemoryStore):
                 f"Invalid strength: {strength}. Must be one of {VALID_EVIDENCE_STRENGTHS}"
             )
 
-        async with async_session_maker() as session:
+        async with self.session_maker() as session:
             async with session.begin():
                 # Verify belief exists and belongs to persona
                 stmt = select(BeliefNode).where(
@@ -318,7 +324,7 @@ class SQLiteMemoryStore(IMemoryStore):
         if "subreddit" not in metadata:
             raise ValueError("metadata must contain 'subreddit'")
 
-        async with async_session_maker() as session:
+        async with self.session_maker() as session:
             async with session.begin():
                 # Verify persona exists
                 stmt = select(Persona).where(Persona.id == persona_id)
@@ -348,8 +354,20 @@ class SQLiteMemoryStore(IMemoryStore):
 
                 session.add(interaction)
                 await session.commit()
+                interaction_id = interaction.id
 
-                return interaction.id
+        # Generate embedding and persist to FAISS outside transaction
+        try:
+            await self.add_interaction_embedding(
+                interaction_id=interaction_id,
+                persona_id=persona_id
+            )
+        except Exception:
+            # Do not fail the logging call if embedding generation fails;
+            # caller can rebuild the index later via rebuild_faiss_index.
+            pass
+
+        return interaction_id
 
     async def add_interaction_embedding(
         self,
@@ -361,7 +379,7 @@ class SQLiteMemoryStore(IMemoryStore):
 
         Implements IMemoryStore.add_interaction_embedding.
         """
-        async with async_session_maker() as session:
+        async with self.session_maker() as session:
             # Fetch interaction
             stmt = select(Interaction).where(
                 and_(
@@ -421,7 +439,7 @@ class SQLiteMemoryStore(IMemoryStore):
         # Fetch interactions from database
         interaction_ids = [int_id for int_id, _ in search_results]
 
-        async with async_session_maker() as session:
+        async with self.session_maker() as session:
             stmt = select(Interaction).where(
                 and_(
                     Interaction.id.in_(interaction_ids),
@@ -484,7 +502,7 @@ class SQLiteMemoryStore(IMemoryStore):
 
         Implements IMemoryStore.rebuild_faiss_index.
         """
-        async with async_session_maker() as session:
+        async with self.session_maker() as session:
             # Verify persona exists
             stmt = select(Persona).where(Persona.id == persona_id)
             result = await session.execute(stmt)
@@ -527,7 +545,7 @@ class SQLiteMemoryStore(IMemoryStore):
 
         Implements IMemoryStore.get_belief_with_stances.
         """
-        async with async_session_maker() as session:
+        async with self.session_maker() as session:
             # Fetch belief with relationships
             stmt = (
                 select(BeliefNode)

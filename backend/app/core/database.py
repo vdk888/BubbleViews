@@ -5,6 +5,7 @@ Provides SQLAlchemy async engine setup, session factory, and dependency
 injection for database sessions in FastAPI routes.
 """
 
+import os
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -35,16 +36,25 @@ def get_async_engine() -> AsyncEngine:
         Engine is created once at application startup and reused.
         Connection pool configuration is optimized for SQLite MVP.
     """
+    is_sqlite = "sqlite" in settings.database_url
+
     # SQLite-specific connection arguments (noop for other drivers)
-    connect_args: dict = {"check_same_thread": False}
+    connect_args: dict = {"check_same_thread": False} if is_sqlite else {}
+
+    engine_kwargs = {
+        "echo": False,  # Set to True for SQL query logging (debug only)
+        "future": True,  # Use SQLAlchemy 2.0 style
+        "connect_args": connect_args,
+    }
+
+    # SQLite works best with StaticPool; let other drivers use defaults
+    if is_sqlite:
+        engine_kwargs["poolclass"] = StaticPool
 
     # Create async engine
     engine = create_async_engine(
         settings.database_url,
-        echo=False,  # Set to True for SQL query logging (debug only)
-        future=True,  # Use SQLAlchemy 2.0 style
-        poolclass=StaticPool,  # SQLite works best with StaticPool
-        connect_args=connect_args,
+        **engine_kwargs,
     )
 
     # SQLite connection pragmas for FK enforcement and WAL support.
@@ -79,12 +89,8 @@ async def init_db() -> None:
     """
     Initialize the database.
 
-    Creates all tables defined by SQLAlchemy models.
-    Should be called once at application startup.
-
-    Note:
-        In production, use Alembic migrations instead of create_all().
-        This function is useful for testing and development.
+    For production, run Alembic migrations instead of create_all().
+    To allow create_all for local/dev, set ENABLE_DB_CREATE_ALL=1.
 
     Example:
         @app.on_event("startup")
@@ -96,7 +102,9 @@ async def init_db() -> None:
     from app import models  # noqa: F401
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        # Only allow create_all when explicitly enabled
+        if os.getenv("ENABLE_DB_CREATE_ALL", "").lower() in {"1", "true", "yes"}:
+            await conn.run_sync(Base.metadata.create_all)
 
         # SQLite-specific pragmas for integrity and concurrency.
         if "sqlite" in settings.database_url:

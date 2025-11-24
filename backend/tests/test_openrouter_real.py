@@ -13,6 +13,11 @@ import json
 import os
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+import sys
+
+# Skip by default to avoid accidental live API calls/costs.
+if os.getenv("OPENROUTER_LIVE_TEST") != "1":
+    sys.exit("OpenRouter live test skipped (set OPENROUTER_LIVE_TEST=1 to run)")
 
 # Load environment variables from .env
 load_dotenv()

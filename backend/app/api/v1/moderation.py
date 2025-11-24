@@ -11,12 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.pending_post import PendingPost
 from app.schemas.moderation import (
     PendingItem,
     ModerationActionRequest,
     ModerationDecisionResponse,
 )
+from app.services.reddit_client import AsyncPRAWClient
 
 router = APIRouter()
 
@@ -83,6 +85,53 @@ async def _update_status(
     return item
 
 
+async def _post_to_reddit(item: PendingPost) -> str:
+    """
+    Publish a pending item to Reddit using AsyncPRAWClient.
+
+    Supports:
+    - post/post_type="post": requires target_subreddit and title in metadata
+    - comment/reply: requires parent_id (from model or draft_metadata)
+    """
+    client = AsyncPRAWClient(
+        client_id=settings.reddit_client_id,
+        client_secret=settings.reddit_client_secret,
+        user_agent=settings.reddit_user_agent,
+        username=settings.reddit_username,
+        password=settings.reddit_password,
+    )
+
+    metadata = item.get_draft_metadata()
+    try:
+        if item.post_type == "post":
+            title = metadata.get("title")
+            if not title or not item.target_subreddit:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Missing title or target_subreddit for post submission",
+                )
+            reddit_id = await client.submit_post(
+                subreddit=item.target_subreddit,
+                title=title,
+                content=item.content,
+                flair_id=metadata.get("flair_id"),
+            )
+        else:
+            parent_id = item.parent_id or metadata.get("parent_id")
+            if not parent_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Missing parent_id for reply/comment submission",
+                )
+            reddit_id = await client.reply(
+                parent_id=parent_id,
+                content=item.content,
+            )
+        return reddit_id
+    finally:
+        await client.close()
+
+
 @router.post(
     "/moderation/approve",
     response_model=ModerationDecisionResponse,
@@ -100,6 +149,35 @@ async def approve(
         status_value="approved",
         reviewer=current_user.username,
     )
+
+    # Attempt to publish to Reddit immediately
+    try:
+        reddit_id = await _post_to_reddit(item)
+        metadata = item.get_draft_metadata()
+        metadata["reddit_id"] = reddit_id
+        item.set_draft_metadata(metadata)
+        db.add(item)
+        await db.commit()
+        await db.refresh(item)
+    except HTTPException:
+        # Already contains proper status codes/messages
+        raise
+    except Exception as exc:  # noqa: BLE001
+        await db.rollback()
+        # revert status to pending so it can be retried
+        item.status = "pending"
+        item.reviewed_by = None
+        item.reviewed_at = None
+        metadata = item.get_draft_metadata()
+        metadata["post_error"] = str(exc)
+        item.set_draft_metadata(metadata)
+        db.add(item)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to publish to Reddit: {exc}"
+        ) from exc
+
     return ModerationDecisionResponse(
         item_id=item.id,
         status=item.status,
