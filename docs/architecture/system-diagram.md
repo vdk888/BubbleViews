@@ -52,7 +52,7 @@ graph TB
     style Dashboard fill:#f38181
 ```
 
-### Component Responsibilities
+### Component ResponsibilitiesThey could. Sick. 
 
 | Component | Responsibility | Technology |
 |-----------|---------------|------------|

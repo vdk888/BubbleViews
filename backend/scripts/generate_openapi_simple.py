@@ -1,0 +1,469 @@
+"""
+Generate OpenAPI specification from FastAPI app (simplified).
+
+This script manually constructs the OpenAPI schema without importing the full app.
+"""
+
+import json
+from pathlib import Path
+
+# Define OpenAPI schema manually based on current implementation
+openapi_schema = {
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Reddit AI Agent API",
+        "version": "0.1.0",
+        "description": """
+# Reddit AI Agent API
+
+Autonomous Reddit AI Agent with Belief Graph and Memory System.
+
+## Features
+
+- **Health Monitoring**: Liveness and readiness probes for deployment
+- **Authentication**: JWT-based authentication for admin dashboard
+- **Settings Management**: Persona-scoped configuration storage
+- **Agent Status**: Monitor agent loop status and activity
+
+## Authentication
+
+Most endpoints require authentication via JWT token. To authenticate:
+
+1. Obtain a token by POSTing credentials to `/api/v1/auth/token`
+2. Include the token in the `Authorization` header: `Bearer <token>`
+
+## Persona Isolation
+
+All data is scoped to personas (Reddit accounts). Settings and configurations
+are isolated per persona using the `persona_id` parameter.
+
+## Rate Limiting
+
+- Auth endpoints: 10 requests/minute per IP
+- Other endpoints: 60 requests/minute per IP
+
+## Observability
+
+All requests include:
+- **X-Request-ID**: Correlation ID for distributed tracing
+- **Structured JSON logs**: Timestamp, path, status, latency
+
+## Architecture
+
+- **Backend**: FastAPI + Python 3.11
+- **Database**: SQLite (MVP), Postgres-ready contracts
+- **Auth**: JWT tokens with bcrypt password hashing
+- **LLM**: OpenRouter API (model-agnostic)
+- **Memory**: FAISS for semantic retrieval
+
+## Next Steps
+
+Ready for Week 3:
+- Memory Store implementation
+- Reddit Client with rate limiting
+- LLM Client with cost tracking
+"""
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8000",
+            "description": "Local development server"
+        }
+    ],
+    "components": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "JWT token obtained from /api/v1/auth/token endpoint"
+            }
+        },
+        "schemas": {
+            "Token": {
+                "type": "object",
+                "properties": {
+                    "access_token": {"type": "string"},
+                    "token_type": {"type": "string"}
+                },
+                "required": ["access_token", "token_type"]
+            },
+            "HealthResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string"},
+                    "timestamp": {"type": "string"}
+                }
+            },
+            "ReadinessResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string"},
+                    "timestamp": {"type": "string"},
+                    "checks": {"type": "object"}
+                }
+            },
+            "AgentStatusResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string"},
+                    "last_activity": {"type": "string", "nullable": True}
+                }
+            },
+            "SettingsResponse": {
+                "type": "object",
+                "properties": {
+                    "persona_id": {"type": "string"},
+                    "config": {"type": "object"}
+                }
+            },
+            "UpdateSettingRequest": {
+                "type": "object",
+                "properties": {
+                    "persona_id": {"type": "string"},
+                    "key": {"type": "string"},
+                    "value": {}
+                },
+                "required": ["persona_id", "key", "value"]
+            },
+            "HTTPValidationError": {
+                "type": "object",
+                "properties": {
+                    "detail": {
+                        "type": "array",
+                        "items": {"type": "object"}
+                    }
+                }
+            }
+        }
+    },
+    "paths": {
+        "/": {
+            "get": {
+                "summary": "Root endpoint",
+                "description": "Returns basic API information",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {"type": "string"},
+                                        "version": {"type": "string"},
+                                        "docs": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/health": {
+            "get": {
+                "tags": ["health"],
+                "summary": "Health check endpoint (liveness probe)",
+                "description": "Returns OK if service is running. Use for Kubernetes liveness probes.",
+                "responses": {
+                    "200": {
+                        "description": "Service is alive",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/HealthResponse"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/health/ready": {
+            "get": {
+                "tags": ["health"],
+                "summary": "Readiness check endpoint",
+                "description": "Checks database and OpenRouter connectivity. Returns 503 if any dependency is unhealthy. Use for Kubernetes readiness probes.",
+                "responses": {
+                    "200": {
+                        "description": "All dependencies are healthy",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/ReadinessResponse"}
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "One or more dependencies are unhealthy",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/ReadinessResponse"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/health/agent": {
+            "get": {
+                "tags": ["health"],
+                "summary": "Agent status endpoint",
+                "description": "Returns agent loop status. Currently returns stub response (not_started). Will be implemented in Week 4.",
+                "responses": {
+                    "200": {
+                        "description": "Agent status",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/AgentStatusResponse"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/token": {
+            "post": {
+                "tags": ["auth"],
+                "summary": "Login endpoint",
+                "description": "Authenticate with username/password and receive JWT access token. Token expires after 60 minutes by default.",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "username": {"type": "string"},
+                                    "password": {"type": "string"}
+                                },
+                                "required": ["username", "password"]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Token"}
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid credentials"
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/HTTPValidationError"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/me": {
+            "get": {
+                "tags": ["auth"],
+                "summary": "Get current user",
+                "description": "Returns information about the currently authenticated user.",
+                "security": [{"BearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "User information",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "username": {"type": "string"},
+                                        "full_name": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not authenticated"
+                    }
+                }
+            }
+        },
+        "/api/v1/protected/test": {
+            "get": {
+                "tags": ["protected"],
+                "summary": "Protected endpoint example",
+                "description": "Example protected endpoint that requires authentication. Returns a greeting with the username.",
+                "security": [{"BearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not authenticated"
+                    }
+                }
+            }
+        },
+        "/api/v1/settings": {
+            "get": {
+                "tags": ["settings"],
+                "summary": "Get persona settings",
+                "description": "Retrieve all configuration settings for a specific persona. Settings are persona-scoped and isolated.",
+                "security": [{"BearerAuth": []}],
+                "parameters": [
+                    {
+                        "name": "persona_id",
+                        "in": "query",
+                        "required": True,
+                        "schema": {"type": "string"},
+                        "description": "The persona ID to retrieve settings for"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Settings retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/SettingsResponse"}
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not authenticated"
+                    },
+                    "404": {
+                        "description": "Persona not found"
+                    }
+                }
+            },
+            "post": {
+                "tags": ["settings"],
+                "summary": "Update persona setting",
+                "description": "Create or update a configuration setting for a specific persona. Settings are validated and blocked if unsafe.",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/UpdateSettingRequest"}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Setting updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "persona_id": {"type": "string"},
+                                        "key": {"type": "string"},
+                                        "value": {},
+                                        "updated": {"type": "boolean"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid setting or unsafe key"
+                    },
+                    "401": {
+                        "description": "Not authenticated"
+                    },
+                    "404": {
+                        "description": "Persona not found"
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/HTTPValidationError"}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "health",
+            "description": "Health check endpoints for monitoring and deployment"
+        },
+        {
+            "name": "auth",
+            "description": "Authentication and authorization endpoints"
+        },
+        {
+            "name": "protected",
+            "description": "Example protected endpoints"
+        },
+        {
+            "name": "settings",
+            "description": "Persona configuration management"
+        }
+    ]
+}
+
+
+def generate_openapi_spec():
+    """Generate OpenAPI specification files."""
+
+    # Ensure output directory exists
+    script_dir = Path(__file__).parent
+    backend_dir = script_dir.parent
+    docs_api_dir = backend_dir.parent / "docs" / "api"
+    docs_api_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write JSON format
+    json_path = docs_api_dir / "openapi.json"
+    with open(json_path, "w") as f:
+        json.dump(openapi_schema, f, indent=2)
+    print(f"Generated OpenAPI JSON: {json_path}")
+
+    # Try to write YAML format (if PyYAML is available)
+    try:
+        import yaml
+        yaml_path = docs_api_dir / "openapi.yaml"
+        with open(yaml_path, "w") as f:
+            yaml.dump(openapi_schema, f, default_flow_style=False, sort_keys=False)
+        print(f"Generated OpenAPI YAML: {yaml_path}")
+    except ImportError:
+        print("PyYAML not installed, skipping YAML generation")
+        print("Install with: pip install pyyaml")
+
+    # Print summary
+    print("\nOpenAPI Specification Summary:")
+    print(f"  Title: {openapi_schema['info']['title']}")
+    print(f"  Version: {openapi_schema['info']['version']}")
+    print(f"  Paths: {len(openapi_schema.get('paths', {}))}")
+    print(f"  Schemas: {len(openapi_schema.get('components', {}).get('schemas', {}))}")
+
+    # List all endpoints
+    print("\nEndpoints:")
+    for path, methods in openapi_schema.get("paths", {}).items():
+        for method in methods.keys():
+            if method != "parameters":
+                print(f"  {method.upper():6} {path}")
+
+    return openapi_schema
+
+
+if __name__ == "__main__":
+    print("Generating OpenAPI specification...\n")
+    generate_openapi_spec()
+    print("\nDone!")

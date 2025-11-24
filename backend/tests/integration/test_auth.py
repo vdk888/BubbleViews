@@ -14,7 +14,7 @@ Tests follow AAA (Arrange, Act, Assert) pattern.
 
 import pytest
 from datetime import timedelta
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -105,7 +105,7 @@ class TestTokenIssuance:
         Assert: Status 200, token returned with correct type
         """
         # Arrange - test_admin fixture creates user
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -132,7 +132,7 @@ class TestTokenIssuance:
         Assert: Status 401, error message returned
         """
         # Arrange - test_admin fixture creates user
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -157,7 +157,7 @@ class TestTokenIssuance:
         Assert: Status 401, error message returned
         """
         # Arrange - test_admin fixture creates user
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -182,7 +182,7 @@ class TestTokenIssuance:
         Assert: Status 422 (validation error)
         """
         # Arrange
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -201,7 +201,7 @@ class TestTokenIssuance:
         Assert: Token can be decoded and has correct username in sub claim
         """
         # Arrange - test_admin fixture creates user
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -242,7 +242,7 @@ class TestProtectedEndpoints:
         Assert: Status 200, response contains username
         """
         # Arrange - Get valid token
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             token_response = await client.post(
                 "/api/v1/auth/token",
                 data={
@@ -273,7 +273,7 @@ class TestProtectedEndpoints:
         Assert: Status 401 (Unauthorized)
         """
         # Arrange
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/protected/test")
 
@@ -291,7 +291,7 @@ class TestProtectedEndpoints:
         Assert: Status 401 (Unauthorized)
         """
         # Arrange
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.get(
                 "/api/v1/protected/test",
@@ -317,7 +317,7 @@ class TestProtectedEndpoints:
             expires_delta=timedelta(seconds=-1)  # Already expired
         )
 
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.get(
                 "/api/v1/protected/test",
@@ -338,7 +338,7 @@ class TestProtectedEndpoints:
         Assert: Status 401 (Unauthorized)
         """
         # Arrange - Get valid token
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             token_response = await client.post(
                 "/api/v1/auth/token",
                 data={
@@ -381,7 +381,7 @@ class TestTokenRefresh:
         Assert: Status 404 (Not Found)
         """
         # Arrange
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/refresh",
@@ -405,7 +405,7 @@ class TestCurrentUser:
         Assert: Status 200, returns username and full_name
         """
         # Arrange - Get valid token
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             token_response = await client.post(
                 "/api/v1/auth/token",
                 data={
@@ -436,7 +436,7 @@ class TestCurrentUser:
         Assert: Status 401 (Unauthorized)
         """
         # Arrange
-        async with AsyncClient(app=app_with_db, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/auth/me")
 

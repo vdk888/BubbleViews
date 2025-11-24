@@ -12,7 +12,7 @@ Tests follow AAA (Arrange, Act, Assert) pattern.
 import pytest
 from datetime import datetime
 from unittest.mock import patch, AsyncMock
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 from app.main import app
 
@@ -30,7 +30,7 @@ class TestHealthEndpointIntegration:
         Assert: Status 200, response has status and timestamp
         """
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health")
 
@@ -49,7 +49,7 @@ class TestHealthEndpointIntegration:
         Assert: Timestamp is valid ISO 8601 format
         """
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health")
 
@@ -69,7 +69,7 @@ class TestHealthEndpointIntegration:
         Assert: Response has required fields with correct types
         """
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health")
 
@@ -89,7 +89,7 @@ class TestHealthEndpointIntegration:
         Assert: Response has X-Request-ID header
         """
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health")
 
@@ -116,7 +116,7 @@ class TestReadinessEndpointIntegration:
         mock_db.return_value = AsyncMock(return_value=True)()
         mock_openrouter.return_value = AsyncMock(return_value=True)()
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health/ready")
 
@@ -142,7 +142,7 @@ class TestReadinessEndpointIntegration:
         mock_db.return_value = AsyncMock(return_value=False)()
         mock_openrouter.return_value = AsyncMock(return_value=True)()
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health/ready")
 
@@ -168,7 +168,7 @@ class TestReadinessEndpointIntegration:
         mock_db.return_value = AsyncMock(return_value=True)()
         mock_openrouter.return_value = AsyncMock(return_value=False)()
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health/ready")
 
@@ -194,7 +194,7 @@ class TestReadinessEndpointIntegration:
         mock_db.return_value = AsyncMock(return_value=False)()
         mock_openrouter.return_value = AsyncMock(return_value=False)()
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health/ready")
 
@@ -219,7 +219,7 @@ class TestReadinessEndpointIntegration:
         mock_db.return_value = AsyncMock(return_value=True)()
         mock_openrouter.return_value = AsyncMock(return_value=True)()
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health/ready")
 
@@ -245,7 +245,7 @@ class TestAgentStatusEndpointIntegration:
         Assert: Status 200
         """
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health/agent")
 
@@ -261,7 +261,7 @@ class TestAgentStatusEndpointIntegration:
         Assert: Status is "not_started", last_activity is None
         """
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health/agent")
 
@@ -280,7 +280,7 @@ class TestAgentStatusEndpointIntegration:
         Assert: Response has required fields
         """
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health/agent")
 
@@ -300,7 +300,7 @@ class TestAgentStatusEndpointIntegration:
         Assert: Response has X-Request-ID header
         """
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/health/agent")
 
