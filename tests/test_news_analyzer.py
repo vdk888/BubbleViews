@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock, patch
-from bubbleviews.analysis.news_analyzer import NewsAnalyzer
-from bubbleviews.models import NewsItem
+from bubbleviews_legacy.analysis.news_analyzer import NewsAnalyzer
+from bubbleviews_legacy.models import NewsItem
 
 @pytest.fixture
 def mock_reddit_client():
