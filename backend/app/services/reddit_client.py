@@ -141,7 +141,11 @@ class AsyncPRAWClient(IRedditClient):
                         )
                         continue
 
+            except (ConnectionError, asyncio.TimeoutError, RedditAPIException):
+                # Re-raise transient errors to trigger retry decorator
+                raise
             except Exception as e:
+                # Log and continue for non-retryable errors (e.g., subreddit not found)
                 logger.error(f"Failed to fetch posts from r/{subreddit_name}: {e}")
                 # Continue with other subreddits
                 continue
@@ -208,6 +212,9 @@ class AsyncPRAWClient(IRedditClient):
                     )
                     continue
 
+        except (ConnectionError, asyncio.TimeoutError, RedditAPIException):
+            # Re-raise transient errors to trigger retry decorator
+            raise
         except Exception as e:
             location = f"r/{subreddit}" if subreddit else "all of Reddit"
             logger.error(f"Search failed for '{query}' in {location}: {e}")

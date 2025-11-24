@@ -4,7 +4,8 @@
       "Bash(python:*)",
       "Bash(pip install:*)",
       "Bash(npm run dev:*)",
-      "Bash(venvScriptspython -c \"import fastapi; print(''FastAPI imported successfully'')\")"
+      "Bash(venvScriptspython -c \"import fastapi; print(''FastAPI imported successfully'')\")",
+      "Bash(./venv/Scripts/python.exe -m pytest tests/ --ignore=tests/integration/test_belief_update_flow.py -v --tb=short)"
     ],
     "deny": [],
     "ask": []

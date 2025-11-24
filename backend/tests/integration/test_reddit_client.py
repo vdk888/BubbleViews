@@ -320,29 +320,34 @@ class TestRedditClientIntegration:
         - Eventual success
         """
         # Setup mock that fails twice then succeeds
+        # The key is that subreddit() itself should fail, not the generator
         call_count = 0
 
-        async def mock_new_generator(limit):
+        async def failing_subreddit(name):
             nonlocal call_count
             call_count += 1
 
             if call_count < 3:
                 raise ConnectionError("Transient failure")
 
-            yield create_mock_submission(
-                "post1", "Title", "Content", "user", "test"
-            )
+            # On third attempt, return a working subreddit mock
+            async def mock_new_generator(limit):
+                yield create_mock_submission(
+                    "post1", "Title", "Content", "user", "test"
+                )
 
-        mock_subreddit = AsyncMock()
-        mock_subreddit.new = Mock(return_value=mock_new_generator(10))
-        mock_reddit_api.subreddit = AsyncMock(return_value=mock_subreddit)
+            mock_subreddit = AsyncMock()
+            mock_subreddit.new = Mock(return_value=mock_new_generator(10))
+            return mock_subreddit
+
+        mock_reddit_api.subreddit = failing_subreddit
 
         # Execute - should retry and succeed
         posts = await reddit_client.get_new_posts(["test"], limit=10)
 
         # Verify success after retries
         assert len(posts) == 1
-        assert call_count >= 2  # At least 2 attempts
+        assert call_count == 3  # Should have retried 3 times total
 
     @pytest.mark.asyncio
     async def test_concurrent_operations(self, reddit_client, mock_reddit_api):

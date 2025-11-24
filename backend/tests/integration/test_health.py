@@ -113,8 +113,8 @@ class TestReadinessEndpointIntegration:
         Assert: Status 200, overall status "ready", all checks healthy
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=True)()
-        mock_openrouter.return_value = AsyncMock(return_value=True)()
+        mock_db.return_value = True
+        mock_openrouter.return_value = True
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
@@ -139,8 +139,8 @@ class TestReadinessEndpointIntegration:
         Assert: Status 503, overall status "not_ready", DB check failed
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=False)()
-        mock_openrouter.return_value = AsyncMock(return_value=True)()
+        mock_db.return_value = False
+        mock_openrouter.return_value = True
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
@@ -165,8 +165,8 @@ class TestReadinessEndpointIntegration:
         Assert: Status 503, overall status "not_ready", OpenRouter check failed
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=True)()
-        mock_openrouter.return_value = AsyncMock(return_value=False)()
+        mock_db.return_value = True
+        mock_openrouter.return_value = False
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
@@ -191,8 +191,8 @@ class TestReadinessEndpointIntegration:
         Assert: Status 503, overall status "not_ready", all checks failed
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=False)()
-        mock_openrouter.return_value = AsyncMock(return_value=False)()
+        mock_db.return_value = False
+        mock_openrouter.return_value = False
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
@@ -216,8 +216,8 @@ class TestReadinessEndpointIntegration:
         Assert: All checks have latency_ms field
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=True)()
-        mock_openrouter.return_value = AsyncMock(return_value=True)()
+        mock_db.return_value = True
+        mock_openrouter.return_value = True
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act

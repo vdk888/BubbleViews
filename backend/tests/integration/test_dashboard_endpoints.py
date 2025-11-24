@@ -1,5 +1,6 @@
 import asyncio
 import pytest
+from unittest.mock import AsyncMock, patch
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
@@ -67,7 +68,14 @@ async def test_activity_endpoint():
 
 
 @pytest.mark.anyio
-async def test_moderation_pending_and_approve():
+@patch('app.api.v1.moderation.AsyncPRAWClient')
+async def test_moderation_pending_and_approve(mock_reddit_client):
+    # Mock the Reddit client to avoid actual API calls
+    mock_instance = AsyncMock()
+    mock_instance.reply = AsyncMock(return_value="t1_mockcomment123")
+    mock_instance.close = AsyncMock()
+    mock_reddit_client.return_value = mock_instance
+
     persona_id = await seed_persona()
     async with async_session_maker() as session:
         pending = PendingPost(
@@ -75,6 +83,7 @@ async def test_moderation_pending_and_approve():
             content="draft",
             post_type="comment",
             target_subreddit="testsub",
+            parent_id="t3_testpost123",  # Add parent_id for comment type
             status="pending",
         )
         session.add(pending)

@@ -23,7 +23,7 @@ from app.main import app
 class TestStructuredLogging:
     """Integration tests for structured JSON logging."""
 
-    async def test_request_produces_json_log(self, caplog):
+    async def test_request_produces_json_log(self, caplog, json_formatter):
         """
         Test that a request produces a structured JSON log entry.
 
@@ -41,12 +41,13 @@ class TestStructuredLogging:
         # Assert
         assert response.status_code == 200
 
-        # Find JSON log entries
+        # Find JSON log entries by formatting records with JSON formatter
         json_logs = []
         for record in caplog.records:
             try:
-                # Try to parse message as JSON
-                log_data = json.loads(record.message)
+                # Format the record as JSON
+                formatted = json_formatter.format(record)
+                log_data = json.loads(formatted)
                 json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):
                 # Not a JSON log, skip
@@ -55,7 +56,7 @@ class TestStructuredLogging:
         # Should have at least one JSON log entry
         assert len(json_logs) > 0, "No JSON log entries found"
 
-    async def test_log_contains_required_fields(self, caplog):
+    async def test_log_contains_required_fields(self, caplog, json_formatter):
         """
         Test that log entry contains all required fields.
 
@@ -73,13 +74,14 @@ class TestStructuredLogging:
         # Assert
         assert response.status_code == 200
 
-        # Find the request log entry
+        # Find the request log entry (completed requests have status_code)
         json_logs = []
         for record in caplog.records:
             try:
-                log_data = json.loads(record.message)
-                # Look for logs with path field (request logs)
-                if "path" in log_data:
+                formatted = json_formatter.format(record)
+                log_data = json.loads(formatted)
+                # Look for completed request logs (have status_code)
+                if "path" in log_data and "status_code" in log_data:
                     json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):
                 continue
@@ -103,7 +105,7 @@ class TestStructuredLogging:
         assert isinstance(log_entry["status_code"], int)
         assert isinstance(log_entry["latency_ms"], (int, float))
 
-    async def test_log_contains_request_id(self, caplog):
+    async def test_log_contains_request_id(self, caplog, json_formatter):
         """
         Test that log entry contains request_id.
 
@@ -125,7 +127,8 @@ class TestStructuredLogging:
         json_logs = []
         for record in caplog.records:
             try:
-                log_data = json.loads(record.message)
+                formatted = json_formatter.format(record)
+                log_data = json.loads(formatted)
                 if "path" in log_data:
                     json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):
@@ -139,7 +142,7 @@ class TestStructuredLogging:
         assert isinstance(log_entry["request_id"], str)
         assert len(log_entry["request_id"]) > 0
 
-    async def test_request_id_matches_header(self, caplog):
+    async def test_request_id_matches_header(self, caplog, json_formatter):
         """
         Test that request_id in log matches X-Request-ID header in response.
 
@@ -164,7 +167,8 @@ class TestStructuredLogging:
         json_logs = []
         for record in caplog.records:
             try:
-                log_data = json.loads(record.message)
+                formatted = json_formatter.format(record)
+                log_data = json.loads(formatted)
                 if "path" in log_data and "request_id" in log_data:
                     json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):
@@ -179,7 +183,7 @@ class TestStructuredLogging:
         assert log_request_id == response_request_id, \
             f"Request ID mismatch: log={log_request_id}, header={response_request_id}"
 
-    async def test_custom_request_id_propagated(self, caplog):
+    async def test_custom_request_id_propagated(self, caplog, json_formatter):
         """
         Test that custom request ID is propagated through system.
 
@@ -206,7 +210,8 @@ class TestStructuredLogging:
         json_logs = []
         for record in caplog.records:
             try:
-                log_data = json.loads(record.message)
+                formatted = json_formatter.format(record)
+                log_data = json.loads(formatted)
                 if "path" in log_data and "request_id" in log_data:
                     json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):
@@ -218,7 +223,7 @@ class TestStructuredLogging:
         log_entry = json_logs[0]
         assert log_entry["request_id"] == custom_request_id
 
-    async def test_log_captures_path_correctly(self, caplog):
+    async def test_log_captures_path_correctly(self, caplog, json_formatter):
         """
         Test that log captures request path correctly.
 
@@ -242,7 +247,8 @@ class TestStructuredLogging:
         json_logs = []
         for record in caplog.records:
             try:
-                log_data = json.loads(record.message)
+                formatted = json_formatter.format(record)
+                log_data = json.loads(formatted)
                 if "path" in log_data:
                     json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):
@@ -253,7 +259,7 @@ class TestStructuredLogging:
         assert "/api/v1/health" in paths
         assert "/api/v1/health/agent" in paths
 
-    async def test_log_captures_status_codes(self, caplog):
+    async def test_log_captures_status_codes(self, caplog, json_formatter):
         """
         Test that log captures HTTP status codes correctly.
 
@@ -279,7 +285,8 @@ class TestStructuredLogging:
         json_logs = []
         for record in caplog.records:
             try:
-                log_data = json.loads(record.message)
+                formatted = json_formatter.format(record)
+                log_data = json.loads(formatted)
                 if "status_code" in log_data:
                     json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):
@@ -290,7 +297,7 @@ class TestStructuredLogging:
         assert 200 in status_codes
         assert 404 in status_codes
 
-    async def test_latency_is_reasonable(self, caplog):
+    async def test_latency_is_reasonable(self, caplog, json_formatter):
         """
         Test that logged latency values are reasonable.
 
@@ -312,7 +319,8 @@ class TestStructuredLogging:
         json_logs = []
         for record in caplog.records:
             try:
-                log_data = json.loads(record.message)
+                formatted = json_formatter.format(record)
+                log_data = json.loads(formatted)
                 if "latency_ms" in log_data:
                     json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):
@@ -333,7 +341,7 @@ class TestStructuredLogging:
 class TestLoggingWithAuth:
     """Integration tests for logging with authentication endpoints."""
 
-    async def test_auth_endpoint_logging(self, caplog):
+    async def test_auth_endpoint_logging(self, caplog, json_formatter):
         """
         Test that authentication endpoints produce proper logs.
 
@@ -358,7 +366,8 @@ class TestLoggingWithAuth:
         json_logs = []
         for record in caplog.records:
             try:
-                log_data = json.loads(record.message)
+                formatted = json_formatter.format(record)
+                log_data = json.loads(formatted)
                 if "path" in log_data and "/auth/token" in log_data["path"]:
                     json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):

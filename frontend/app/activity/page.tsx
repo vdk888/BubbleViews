@@ -144,7 +144,7 @@ export default function ActivityPage() {
                   rel="noopener noreferrer"
                   className="text-sm font-semibold hover:underline"
                 >
-                  Voir sur Reddit ->
+                  Voir sur Reddit {" ->"}
                 </a>
                 {item.metadata.karma !== undefined && (
                   <span className="text-sm text-[var(--text-secondary)]">

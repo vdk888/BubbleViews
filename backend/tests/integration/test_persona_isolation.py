@@ -85,14 +85,14 @@ class TestPersonaIsolationEndToEnd:
             persona_id="persona_a",
             content="Persona A's comment about topic X",
             interaction_type="comment",
-            metadata={"reddit_id": "t1_a_123"}
+            metadata={"reddit_id": "t1_a_123", "subreddit": "test"}
         )
 
         await memory_store.log_interaction(
             persona_id="persona_b",
             content="Persona B's comment about topic Y",
             interaction_type="comment",
-            metadata={"reddit_id": "t1_b_456"}
+            metadata={"reddit_id": "t1_b_456", "subreddit": "test"}
         )
 
         # Query interactions via database
@@ -321,7 +321,7 @@ class TestPersonaIsolationEndToEnd:
             persona_id="persona_a",
             content="Persona A's comment on AI",
             interaction_type="comment",
-            metadata={"reddit_id": "t1_a"}
+            metadata={"reddit_id": "t1_a", "subreddit": "test"}
         )
 
         # 3. Evaluate and enqueue content
@@ -350,7 +350,7 @@ class TestPersonaIsolationEndToEnd:
             persona_id="persona_b",
             content="Persona B's comment on AI risks",
             interaction_type="comment",
-            metadata={"reddit_id": "t1_b"}
+            metadata={"reddit_id": "t1_b", "subreddit": "test"}
         )
 
         eval_b = await mod_service.evaluate_content(

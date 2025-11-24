@@ -10,8 +10,10 @@ This module provides:
 import os
 import sys
 from pathlib import Path
+import logging
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 # Set test environment variables BEFORE any imports
@@ -100,3 +102,57 @@ async def async_session():
     # Drop all tables after test
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest.fixture(autouse=True)
+def setup_json_logging():
+    """
+    Set up JSON logging for integration tests.
+
+    This fixture automatically runs before each test to ensure
+    structured JSON logging is configured properly.
+    """
+    from app.core.logging_config import setup_logging
+
+    # Configure JSON logging
+    setup_logging(level="INFO", json_format=True)
+
+    yield
+
+    # Cleanup is handled by setup_logging removing existing handlers
+
+
+@pytest.fixture
+def json_formatter():
+    """
+    Provide the JSON formatter for tests.
+
+    This allows tests to format log records as JSON for validation.
+    """
+    from app.core.logging_config import JSONFormatter
+
+    return JSONFormatter()
+
+
+@pytest.fixture(scope="function")
+def client():
+    """
+    Provide a test client for non-async endpoint tests.
+
+    This fixture creates a TestClient instance for testing
+    synchronous endpoints (like SSE status endpoints).
+    """
+    from app.main import app
+    from app.api.dependencies import get_current_user
+    from app.core.security import User
+
+    # Override authentication for tests
+    app.dependency_overrides[get_current_user] = lambda: User(
+        username="admin", full_name="Admin", disabled=False
+    )
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+    # Clear overrides
+    app.dependency_overrides.clear()

@@ -102,6 +102,27 @@ export interface PersonaSummary {
   display_name: string | null;
 }
 
+export interface PersonaConfig {
+  tone?: string;
+  style?: string;
+  core_values?: string[];
+  target_subreddits?: string[];
+}
+
+export interface PersonaCreateRequest {
+  reddit_username: string;
+  display_name?: string;
+  config?: PersonaConfig;
+}
+
+export interface PersonaCreateResponse {
+  id: string;
+  reddit_username: string;
+  display_name: string | null;
+  config: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface ModerationActionRequest {
   item_id: string;
   persona_id: string;
@@ -335,6 +356,13 @@ class ApiClient {
   // Persona endpoints
   async getPersonas(): Promise<PersonaSummary[]> {
     return this.request("/api/v1/personas");
+  }
+
+  async createPersona(data: PersonaCreateRequest): Promise<PersonaCreateResponse> {
+    return this.request("/api/v1/personas", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   }
 
   // Settings endpoints
