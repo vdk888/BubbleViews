@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
     async_sessionmaker,
 )
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
@@ -108,8 +108,8 @@ async def init_db() -> None:
 
         # SQLite-specific pragmas for integrity and concurrency.
         if "sqlite" in settings.database_url:
-            await conn.execute("PRAGMA foreign_keys=ON")
-            await conn.execute("PRAGMA journal_mode=WAL")
+            await conn.execute(text("PRAGMA foreign_keys=ON"))
+            await conn.execute(text("PRAGMA journal_mode=WAL"))
 
 
 async def close_db() -> None:

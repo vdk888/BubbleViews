@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 interface Message {
@@ -126,12 +126,12 @@ export default function GovernorPage() {
   };
 
   // Get persona from localStorage or context (simplified for MVP)
-  useState(() => {
+  useEffect(() => {
     const stored = localStorage.getItem('selectedPersonaId');
     if (stored) {
       setSelectedPersonaId(stored);
     }
-  });
+  }, []);
 
   return (
     <div className="container mx-auto max-w-4xl p-6">

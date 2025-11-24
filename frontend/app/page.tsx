@@ -82,7 +82,7 @@ export default function Home() {
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-[var(--text-secondary)]">Activity</span>
-              <span className="text-lg">-></span>
+              <span className="text-lg">{"->"}</span>
             </div>
             <h4 className="mb-2">View Activity</h4>
             <p className="muted text-sm">Parcourir les interactions Reddit recentes.</p>
@@ -94,7 +94,7 @@ export default function Home() {
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-[var(--text-secondary)]">Review</span>
-              <span className="text-lg">-></span>
+              <span className="text-lg">{"->"}</span>
             </div>
             <h4 className="mb-2">Review Queue</h4>
             <p className="muted text-sm">Approuver ou rejeter les contenus en attente.</p>
@@ -106,7 +106,7 @@ export default function Home() {
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-[var(--text-secondary)]">Beliefs</span>
-              <span className="text-lg">-></span>
+              <span className="text-lg">{"->"}</span>
             </div>
             <h4 className="mb-2">Belief Graph</h4>
             <p className="muted text-sm">Explorer le graphe de croyances de l'agent.</p>
@@ -118,7 +118,7 @@ export default function Home() {
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-[var(--text-secondary)]">Governance</span>
-              <span className="text-lg">-></span>
+              <span className="text-lg">{"->"}</span>
             </div>
             <h4 className="mb-2">Settings</h4>
             <p className="muted text-sm">Configurer l'agent et ses comportements.</p>
