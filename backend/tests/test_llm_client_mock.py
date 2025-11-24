@@ -97,6 +97,8 @@ async def test_generate_response_mock():
 
             mock_choice = MagicMock()
             mock_choice.message.content = "This is a test response from the LLM."
+            mock_choice.message.tool_calls = None
+            mock_choice.finish_reason = "stop"
 
             mock_response = MagicMock()
             mock_response.choices = [mock_choice]
@@ -109,25 +111,38 @@ async def test_generate_response_mock():
             response = await client.generate_response(
                 system_prompt="You are a helpful assistant.",
                 context={},
-                user_message="Test message"
+                user_message="Test message",
+                temperature=0.7,
+                max_tokens=500,
+                correlation_id="test-correlation-123"
             )
 
-            # Verify response structure
+            # Verify response structure (updated interface)
             assert 'text' in response, "Missing 'text' in response"
             assert 'model' in response, "Missing 'model' in response"
-            assert 'tokens' in response, "Missing 'tokens' in response"
+            assert 'tokens_in' in response, "Missing 'tokens_in' in response"
+            assert 'tokens_out' in response, "Missing 'tokens_out' in response"
+            assert 'total_tokens' in response, "Missing 'total_tokens' in response"
             assert 'cost' in response, "Missing 'cost' in response"
+            assert 'tool_calls' in response, "Missing 'tool_calls' in response"
+            assert 'finish_reason' in response, "Missing 'finish_reason' in response"
             assert 'correlation_id' in response, "Missing 'correlation_id' in response"
 
             print(f"\n[OK] Response text: {response['text'][:50]}...")
             print(f"[OK] Model: {response['model']}")
-            print(f"[OK] Tokens: {response['tokens']}")
+            print(f"[OK] Tokens In: {response['tokens_in']}")
+            print(f"[OK] Tokens Out: {response['tokens_out']}")
+            print(f"[OK] Total Tokens: {response['total_tokens']}")
             print(f"[OK] Cost: ${response['cost']:.6f}")
+            print(f"[OK] Finish Reason: {response['finish_reason']}")
+            print(f"[OK] Tool Calls: {len(response['tool_calls'])}")
             print(f"[OK] Correlation ID: {response['correlation_id']}")
 
             # Verify cost calculation
             assert response['cost'] > 0, "Cost should be > 0"
+            assert response['correlation_id'] == "test-correlation-123", "Should preserve correlation ID"
             print(f"[OK] Cost calculation working")
+            print(f"[OK] Correlation ID preserved")
 
             print("\n[PASSED] Generate response test")
             return True
@@ -166,7 +181,8 @@ async def test_check_consistency_mock():
             mock_choice.message.content = json.dumps({
                 "is_consistent": False,
                 "conflicts": ["belief_1"],
-                "explanation": "Draft contradicts belief about climate change"
+                "explanation": "Draft contradicts belief about climate change",
+                "confidence": 0.85
             })
 
             mock_response = MagicMock()
@@ -180,27 +196,38 @@ async def test_check_consistency_mock():
             result = await client.check_consistency(
                 draft_response="Climate change is not real.",
                 beliefs=[
-                    {"text": "Climate change is real", "confidence": 0.9}
-                ]
+                    {"id": "belief_1", "text": "Climate change is real", "confidence": 0.9}
+                ],
+                correlation_id="test-consistency-456"
             )
 
-            # Verify response structure
+            # Verify response structure (updated interface)
             assert 'is_consistent' in result, "Missing 'is_consistent' in result"
             assert 'conflicts' in result, "Missing 'conflicts' in result"
             assert 'explanation' in result, "Missing 'explanation' in result"
-            assert 'tokens' in result, "Missing 'tokens' in result"
+            assert 'model' in result, "Missing 'model' in result"
+            assert 'tokens_in' in result, "Missing 'tokens_in' in result"
+            assert 'tokens_out' in result, "Missing 'tokens_out' in result"
             assert 'cost' in result, "Missing 'cost' in result"
+            assert 'confidence' in result, "Missing 'confidence' in result"
+            assert 'correlation_id' in result, "Missing 'correlation_id' in result"
 
             print(f"\n[OK] Is Consistent: {result['is_consistent']}")
             print(f"[OK] Conflicts: {result['conflicts']}")
             print(f"[OK] Explanation: {result['explanation']}")
-            print(f"[OK] Tokens: {result['tokens']}")
+            print(f"[OK] Model: {result['model']}")
+            print(f"[OK] Tokens In: {result['tokens_in']}")
+            print(f"[OK] Tokens Out: {result['tokens_out']}")
             print(f"[OK] Cost: ${result['cost']:.6f}")
+            print(f"[OK] Confidence: {result['confidence']}")
+            print(f"[OK] Correlation ID: {result['correlation_id']}")
 
             # Verify inconsistency detected
             assert not result['is_consistent'], "Should detect inconsistency"
             assert len(result['conflicts']) > 0, "Should have conflicts"
+            assert result['correlation_id'] == "test-consistency-456", "Should preserve correlation ID"
             print(f"[OK] Inconsistency detection working")
+            print(f"[OK] Correlation ID preserved")
 
             print("\n[PASSED] Consistency check test")
             return True

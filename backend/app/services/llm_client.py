@@ -30,19 +30,34 @@ class OpenRouterClient(ILLMClient):
     """OpenRouter LLM client (OpenAI-compatible API)"""
 
     # OpenRouter pricing (per 1M tokens)
+    # Updated January 2025 - check https://openrouter.ai/docs/models for latest pricing
     PRICING = {
+        # OpenAI Models
+        "openai/gpt-4o-mini": {
+            "input": 0.15 / 1_000_000,
+            "output": 0.60 / 1_000_000
+        },
         "openai/gpt-5.1-mini": {
             "input": 0.15 / 1_000_000,
             "output": 0.60 / 1_000_000
+        },
+        "openai/gpt-4o": {
+            "input": 2.50 / 1_000_000,
+            "output": 10.00 / 1_000_000
+        },
+        # Anthropic Models
+        "anthropic/claude-3.5-haiku": {
+            "input": 0.25 / 1_000_000,
+            "output": 1.25 / 1_000_000
         },
         "anthropic/claude-4.5-haiku": {
             "input": 0.25 / 1_000_000,
             "output": 1.25 / 1_000_000
         },
-        "anthropic/claude-3.5-haiku": {
-            "input": 0.25 / 1_000_000,
-            "output": 1.25 / 1_000_000
-        }
+        "anthropic/claude-3.5-sonnet": {
+            "input": 3.00 / 1_000_000,
+            "output": 15.00 / 1_000_000
+        },
     }
 
     # Retry configuration
@@ -77,7 +92,10 @@ class OpenRouterClient(ILLMClient):
         system_prompt: str,
         context: Dict,
         user_message: str,
-        tools: Optional[List[Dict]] = None
+        tools: Optional[List[Dict]] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 500,
+        correlation_id: Optional[str] = None,
     ) -> Dict:
         """
         Generate response using GPT-5.1-mini (fast, cheap).
@@ -85,15 +103,28 @@ class OpenRouterClient(ILLMClient):
         Uses exponential backoff retry logic for rate limits and transient errors.
 
         Args:
-            system_prompt: System-level instructions
-            context: Contextual information
-            user_message: User's message
-            tools: Optional tool definitions
+            system_prompt: System-level instructions (persona, rules, safety)
+            context: Dict with persona, beliefs, past comments, thread data
+            user_message: The actual question/prompt for the LLM
+            tools: Optional list of tool definitions (OpenAI function format)
+            temperature: Sampling temperature (0-1, default 0.7 for drafting)
+            max_tokens: Maximum tokens in response (default 500)
+            correlation_id: Optional request ID for tracing
 
         Returns:
-            Dict with text, model, tokens, and cost
+            Dict with:
+                - text: Generated response text
+                - model: Model name used
+                - tokens_in: Prompt tokens consumed
+                - tokens_out: Completion tokens generated
+                - total_tokens: Sum of in + out
+                - cost: Calculated cost in USD
+                - tool_calls: List of tool calls if applicable
+                - finish_reason: stop, length, tool_calls, etc.
         """
-        correlation_id = str(uuid.uuid4())
+        if correlation_id is None:
+            correlation_id = str(uuid.uuid4())
+
         logger.info(
             "Generating response",
             extra={
@@ -101,6 +132,8 @@ class OpenRouterClient(ILLMClient):
                 "model": self.response_model,
                 "system_prompt_length": len(system_prompt),
                 "user_message_length": len(user_message),
+                "temperature": temperature,
+                "max_tokens": max_tokens,
                 "has_tools": tools is not None
             }
         )
@@ -117,16 +150,39 @@ class OpenRouterClient(ILLMClient):
             response = await self._call_with_retry(
                 model=self.response_model,
                 messages=messages,
-                temperature=0.7,
-                max_tokens=500,
+                temperature=temperature,
+                max_tokens=max_tokens,
                 tools=tools
             )
 
+            # Extract tool calls if present
+            tool_calls = []
+            if response.choices[0].message.tool_calls:
+                tool_calls = [
+                    {
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    }
+                    for tc in response.choices[0].message.tool_calls
+                ]
+
             result = {
-                "text": response.choices[0].message.content,
+                "text": response.choices[0].message.content or "",
                 "model": self.response_model,
-                "tokens": response.usage.total_tokens,
-                "cost": self._calculate_cost(response.usage, self.response_model),
+                "tokens_in": response.usage.prompt_tokens,
+                "tokens_out": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+                "cost": self.calculate_cost(
+                    self.response_model,
+                    response.usage.prompt_tokens,
+                    response.usage.completion_tokens
+                ),
+                "tool_calls": tool_calls,
+                "finish_reason": response.choices[0].finish_reason,
                 "correlation_id": correlation_id
             }
 
@@ -134,9 +190,13 @@ class OpenRouterClient(ILLMClient):
                 "Response generated successfully",
                 extra={
                     "correlation_id": correlation_id,
-                    "tokens": result["tokens"],
+                    "tokens_in": result["tokens_in"],
+                    "tokens_out": result["tokens_out"],
+                    "total_tokens": result["total_tokens"],
                     "cost": result["cost"],
-                    "response_length": len(result["text"])
+                    "finish_reason": result["finish_reason"],
+                    "response_length": len(result["text"]),
+                    "tool_call_count": len(tool_calls)
                 }
             )
 
@@ -157,19 +217,33 @@ class OpenRouterClient(ILLMClient):
     async def check_consistency(
         self,
         draft_response: str,
-        beliefs: List[Dict]
+        beliefs: List[Dict],
+        correlation_id: Optional[str] = None,
     ) -> Dict:
         """
-        Check consistency using Claude-4.5-Haiku (cheaper for checks).
+        Check if draft response is consistent with agent's beliefs.
+
+        Uses secondary model (Claude-4.5-Haiku) for accurate, deterministic checking.
 
         Args:
-            draft_response: Draft response to validate
-            beliefs: List of belief dicts with 'text' and 'confidence'
+            draft_response: The generated response text to check
+            beliefs: List of belief dicts with {id, text, confidence, ...}
+            correlation_id: Optional request ID for tracing
 
         Returns:
-            Dict with is_consistent, conflicts, explanation, tokens, and cost
+            Dict with:
+                - is_consistent: bool, True if no conflicts found
+                - conflicts: List of belief IDs that conflict
+                - explanation: Natural language explanation of conflicts
+                - model: Model name used for checking
+                - tokens_in: Tokens consumed
+                - tokens_out: Tokens generated
+                - cost: Cost in USD
+                - confidence: Optional confidence score (0-1)
         """
-        correlation_id = str(uuid.uuid4())
+        if correlation_id is None:
+            correlation_id = str(uuid.uuid4())
+
         logger.info(
             "Checking consistency",
             extra={
@@ -181,24 +255,29 @@ class OpenRouterClient(ILLMClient):
         )
 
         belief_summary = "\n".join([
-            f"- {b.get('text', b.get('summary', 'Unknown'))} (confidence: {b.get('confidence', 0.0)})"
+            f"- ID: {b.get('id', 'unknown')}, "
+            f"Text: {b.get('text', b.get('summary', 'Unknown'))}, "
+            f"Confidence: {b.get('confidence', 0.0):.2f}"
             for b in beliefs
         ])
 
         prompt = f"""You are a consistency checker. Analyze if the draft response contradicts any beliefs.
 
-Beliefs:
+Agent's Current Beliefs:
 {belief_summary}
 
-Draft Response:
+Draft Response to Check:
 {draft_response}
 
-Respond with JSON:
+Respond with JSON containing:
 {{
   "is_consistent": true/false,
-  "conflicts": ["belief_id1", ...],
-  "explanation": "brief explanation"
-}}"""
+  "conflicts": ["belief_id1", "belief_id2", ...],
+  "explanation": "brief explanation of any conflicts found",
+  "confidence": 0.0-1.0 (your confidence in this assessment)
+}}
+
+If no conflicts are found, set is_consistent to true and conflicts to an empty array."""
 
         try:
             response = await self._call_with_retry(
@@ -211,17 +290,31 @@ Respond with JSON:
 
             # Parse JSON response
             result = json.loads(response.choices[0].message.content)
-            result["tokens"] = response.usage.total_tokens
-            result["cost"] = self._calculate_cost(response.usage, self.consistency_model)
+            result["model"] = self.consistency_model
+            result["tokens_in"] = response.usage.prompt_tokens
+            result["tokens_out"] = response.usage.completion_tokens
+            result["cost"] = self.calculate_cost(
+                self.consistency_model,
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens
+            )
             result["correlation_id"] = correlation_id
+
+            # Ensure required fields exist with defaults
+            result.setdefault("is_consistent", False)
+            result.setdefault("conflicts", [])
+            result.setdefault("explanation", "")
+            result.setdefault("confidence", 0.5)
 
             logger.info(
                 "Consistency check completed",
                 extra={
                     "correlation_id": correlation_id,
-                    "is_consistent": result.get("is_consistent"),
-                    "conflict_count": len(result.get("conflicts", [])),
-                    "tokens": result["tokens"],
+                    "is_consistent": result["is_consistent"],
+                    "conflict_count": len(result["conflicts"]),
+                    "confidence": result["confidence"],
+                    "tokens_in": result["tokens_in"],
+                    "tokens_out": result["tokens_out"],
                     "cost": result["cost"]
                 }
             )
@@ -233,7 +326,8 @@ Respond with JSON:
                 "Failed to parse consistency check response",
                 extra={
                     "correlation_id": correlation_id,
-                    "error": str(e)
+                    "error": str(e),
+                    "raw_response": response.choices[0].message.content if response else None
                 },
                 exc_info=True
             )
@@ -242,8 +336,11 @@ Respond with JSON:
                 "is_consistent": False,
                 "conflicts": [],
                 "explanation": "Failed to parse consistency check response",
-                "tokens": 0,
+                "model": self.consistency_model,
+                "tokens_in": 0,
+                "tokens_out": 0,
                 "cost": 0.0,
+                "confidence": 0.0,
                 "correlation_id": correlation_id,
                 "error": str(e)
             }
@@ -379,16 +476,26 @@ Respond with JSON:
         )
         raise last_error
 
-    def _calculate_cost(self, usage, model: str) -> float:
+    def calculate_cost(
+        self,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+    ) -> float:
         """
-        Calculate cost based on token usage and model pricing.
+        Calculate cost for an LLM request.
 
         Args:
-            usage: Usage object from API response
-            model: Model identifier
+            model: Model identifier (e.g., "openai/gpt-5.1-mini")
+            tokens_in: Number of input tokens
+            tokens_out: Number of output tokens
 
         Returns:
             Cost in USD (rounded to 6 decimal places)
+
+        Note:
+            Pricing table is maintained in PRICING class constant and should be
+            updated as provider pricing changes.
         """
         if model not in self.PRICING:
             logger.warning(
@@ -402,7 +509,7 @@ Respond with JSON:
 
         pricing = self.PRICING[model]
         cost = (
-            usage.prompt_tokens * pricing["input"] +
-            usage.completion_tokens * pricing["output"]
+            tokens_in * pricing["input"] +
+            tokens_out * pricing["output"]
         )
         return round(cost, 6)
