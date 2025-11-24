@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # Import all models to ensure they're registered with SQLAlchemy
 from app.models import Base  # noqa: E402
 from app.models import (  # noqa: E402, F401
+    Admin,
     Persona,
     BeliefNode,
     BeliefEdge,

@@ -145,6 +145,33 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Alternative session generator for use outside FastAPI dependencies.
+
+    Similar to get_db() but with manual commit control.
+    Useful for scripts, background tasks, and non-FastAPI contexts.
+
+    Yields:
+        AsyncSession instance for database operations
+
+    Example:
+        async for session in get_session():
+            result = await session.execute(select(User))
+            users = result.scalars().all()
+            await session.commit()
+
+    Note:
+        - Caller must explicitly commit or rollback
+        - Session is automatically closed after use
+    """
+    async with async_session_maker() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
 async def get_db_context() -> AsyncSession:
     """
     Get database session for use outside of FastAPI dependencies.

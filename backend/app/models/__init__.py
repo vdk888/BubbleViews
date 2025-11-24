@@ -6,6 +6,7 @@ Import models from this module to ensure they're registered with SQLAlchemy.
 """
 
 from app.models.base import Base, TimestampMixin, UUIDMixin, ModelMixin
+from app.models.user import Admin
 from app.models.persona import Persona
 from app.models.belief import (
     BeliefNode,
@@ -26,6 +27,7 @@ __all__ = [
     "UUIDMixin",
     "ModelMixin",
     # Models
+    "Admin",
     "Persona",
     "BeliefNode",
     "BeliefEdge",

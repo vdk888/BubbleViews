@@ -196,32 +196,38 @@ async def get_current_user(
 
 async def get_user(username: str) -> Optional[UserInDB]:
     """
-    Retrieve user from storage.
+    Retrieve user from database.
 
-    For MVP, this uses a hardcoded admin user. In production,
-    this should query the database.
+    Queries the Admin table to find the user by username.
 
     Args:
         username: Username to look up
 
     Returns:
         UserInDB if found, None otherwise
-
-    Note:
-        TODO: Replace with database lookup in Phase 1
     """
-    # MVP: Hardcoded admin user
-    # Password: "admin" (hashed)
-    # In production, store this in the database
-    if username == "admin":
-        return UserInDB(
-            username="admin",
-            full_name="Admin User",
-            disabled=False,
-            hashed_password=get_password_hash("admin")
-        )
+    from sqlalchemy import select
+    from app.core.database import get_session
+    from app.models.user import Admin
 
-    return None
+    async for session in get_session():
+        try:
+            result = await session.execute(
+                select(Admin).where(Admin.username == username)
+            )
+            admin = result.scalar_one_or_none()
+
+            if admin:
+                return UserInDB(
+                    username=admin.username,
+                    full_name="Admin User",
+                    disabled=False,
+                    hashed_password=admin.hashed_password
+                )
+
+            return None
+        finally:
+            await session.close()
 
 
 async def authenticate_user(username: str, password: str) -> Optional[User]:

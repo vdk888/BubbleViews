@@ -102,7 +102,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore"  # Ignore extra environment variables
+        extra="ignore",  # Ignore extra environment variables
+        env_nested_delimiter="__",  # Support nested config via env vars
     )
 
     @field_validator("target_subreddits", mode="before")

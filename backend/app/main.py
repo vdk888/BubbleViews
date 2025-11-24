@@ -13,6 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
+from app.core.logging_config import setup_logging
+from app.middleware.request_id import RequestIDMiddleware
+from app.middleware.logging import LoggingMiddleware
 
 
 @asynccontextmanager
@@ -32,6 +35,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         - Clean up resources
     """
     # Startup
+    # Initialize structured JSON logging
+    setup_logging(level="INFO", json_format=True)
+
+    # Initialize database
     await init_db()
 
     yield
@@ -52,7 +59,17 @@ app = FastAPI(
 )
 
 
-# Configure CORS
+# Configure middleware
+# Note: Middleware is executed in reverse order of registration
+# (last registered = first executed)
+
+# Logging middleware (runs after RequestID to access request_id)
+app.add_middleware(LoggingMiddleware)
+
+# Request ID middleware (first to run - sets correlation ID)
+app.add_middleware(RequestIDMiddleware)
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],  # Frontend URL
@@ -63,9 +80,11 @@ app.add_middleware(
 
 
 # Import and include routers
-from app.api.v1 import health
+from app.api.v1 import health, auth, protected
 
 app.include_router(health.router, prefix=settings.api_v1_prefix, tags=["health"])
+app.include_router(auth.router, prefix=f"{settings.api_v1_prefix}/auth", tags=["auth"])
+app.include_router(protected.router, prefix=f"{settings.api_v1_prefix}/protected", tags=["protected"])
 
 
 @app.get("/")
