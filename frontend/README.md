@@ -100,9 +100,52 @@ Key endpoints:
 
 ### Vercel (Recommended)
 
-1. **Connect repository to Vercel**: Visit https://vercel.com/new
-2. **Configure environment variables**: Set `NEXT_PUBLIC_API_URL`
-3. **Deploy**: Automatic deployment on push to main branch
+The dashboard is configured for zero-config deployment to Vercel.
+
+#### Steps to Deploy:
+
+1. **Push code to GitHub** (if not already done)
+
+2. **Import to Vercel**:
+   - Visit https://vercel.com/new
+   - Select your repository
+   - Vercel will auto-detect Next.js configuration
+
+3. **Configure Environment Variables**:
+   - In Vercel dashboard, go to Project Settings > Environment Variables
+   - Add the following:
+     ```
+     NEXT_PUBLIC_API_URL=https://your-backend-api.com
+     ```
+   - Replace with your actual backend API URL (e.g., DigitalOcean deployment)
+
+4. **Deploy**:
+   - Click "Deploy"
+   - Subsequent pushes to main branch will trigger automatic deployments
+
+#### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `NEXT_PUBLIC_API_URL` | Backend API base URL | `https://api.yourproject.com` or `http://localhost:8000` for local |
+
+**Note**: The `NEXT_PUBLIC_` prefix exposes variables to the browser. Never include secrets here.
+
+#### Custom Domain (Optional)
+
+1. In Vercel dashboard, go to Project Settings > Domains
+2. Add your custom domain
+3. Configure DNS as instructed by Vercel
+
+#### Production Checklist
+
+Before deploying to production:
+
+- [ ] Backend API is deployed and accessible
+- [ ] CORS is configured on backend to allow Vercel domain
+- [ ] Environment variables are set in Vercel
+- [ ] Test build locally: `npm run build`
+- [ ] Verify API connectivity from deployed frontend
 
 ## References
 

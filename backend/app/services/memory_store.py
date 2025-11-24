@@ -177,10 +177,10 @@ class SQLiteMemoryStore(IMemoryStore):
                 if not belief:
                     raise ValueError(f"Belief {belief_id} not found for persona {persona_id}")
 
-                # Find current stance
+                # Find current or locked stance
                 current_stance = None
                 for stance in belief.stance_versions:
-                    if stance.status == "current":
+                    if stance.status in ("current", "locked"):
                         current_stance = stance
                         break
 
@@ -586,8 +586,24 @@ class SQLiteMemoryStore(IMemoryStore):
                 ),
             }
 
-            # Sort and format stances (newest first)
+            # Sort and format stances (current first, then by newest)
+            # Status priority ensures current stances appear first
+            status_priority = {"current": 0, "locked": 1, "deprecated": 2}
+            def stance_sort_key(s):
+                # Primary: status (current first)
+                # Secondary: created_at (newest first, so negate for ascending sort)
+                created = s.created_at
+                if isinstance(created, str):
+                    # For string timestamps, newer = higher string value in ISO format
+                    # Negate by reversing to make newer come first
+                    return (status_priority.get(s.status, 9), created)
+                return (status_priority.get(s.status, 9), created)
+
+            stances = sorted(belief.stance_versions, key=stance_sort_key, reverse=False)
+            # But we want newest created_at first within each status, so reverse=True for created_at part
+            # Let's use a simpler approach: sort by status ascending, then created_at descending
             stances = sorted(belief.stance_versions, key=lambda s: s.created_at, reverse=True)
+            stances = sorted(stances, key=lambda s: status_priority.get(s.status, 9))
             stances_data = [
                 {
                     "id": stance.id,

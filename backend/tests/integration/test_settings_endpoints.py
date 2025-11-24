@@ -28,7 +28,12 @@ async def async_session():
         AsyncSession for testing
     """
     # Import all models to ensure they're registered with Base.metadata
-    from app.models import persona, user, agent_config
+    from app.models.persona import Persona  # noqa: F401
+    from app.models.user import Admin  # noqa: F401
+    from app.models.agent_config import AgentConfig  # noqa: F401
+    from app.models.belief import BeliefNode, BeliefEdge, StanceVersion, EvidenceLink, BeliefUpdate  # noqa: F401
+    from app.models.interaction import Interaction  # noqa: F401
+    from app.models.pending_post import PendingPost  # noqa: F401
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
@@ -71,7 +76,7 @@ async def test_admin(async_session: AsyncSession):
 
 
 @pytest.fixture
-def auth_token(test_admin: Admin) -> str:
+async def auth_token(test_admin: Admin) -> str:
     """
     Create JWT token for test admin.
 
