@@ -97,6 +97,16 @@ class Settings(BaseSettings):
         description="JWT access token expiration time in minutes"
     )
 
+    # CORS Configuration
+    cors_origins: List[str] = Field(
+        default=["http://localhost:3000"],
+        description="Allowed CORS origins (frontend URLs)"
+    )
+    cors_allow_credentials: bool = Field(
+        default=True,
+        description="Allow cookies/credentials in CORS requests"
+    )
+
     # Pydantic Settings Configuration
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -122,21 +132,164 @@ class Settings(BaseSettings):
                 return [s.strip() for s in v.split(",") if s.strip()]
         return v
 
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: str | List[str]) -> List[str]:
+        """
+        Parse cors_origins from JSON string or list.
+
+        Handles both JSON array strings and Python lists for flexibility.
+        Supports comma-separated origins for easier .env configuration.
+        """
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                # Fallback: split by comma if not valid JSON
+                return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
     @field_validator("secret_key")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
         """
         Validate that secret_key is properly configured.
 
-        Raises ValueError if still using placeholder value.
+        Raises ValueError if still using placeholder value or too short.
+        Security requirement: JWT signing keys must be at least 32 characters.
         """
-        if v == "generate-with-openssl-rand-hex-32":
+        if not v or v.strip() == "":
             raise ValueError(
-                "SECRET_KEY must be set to a secure random value. "
+                "SECRET_KEY is required and cannot be empty. "
+                "Generate one with: openssl rand -hex 32"
+            )
+        if v in ["generate-with-openssl-rand-hex-32", "CHANGE_ME_32_CHARS_MIN", "your-secret-key-here"]:
+            raise ValueError(
+                "SECRET_KEY must be set to a secure random value (not placeholder). "
                 "Generate one with: openssl rand -hex 32"
             )
         if len(v) < 32:
-            raise ValueError("SECRET_KEY must be at least 32 characters long")
+            raise ValueError(
+                f"SECRET_KEY must be at least 32 characters long for security. "
+                f"Current length: {len(v)}. Generate with: openssl rand -hex 32"
+            )
+        return v
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, v: str) -> str:
+        """
+        Validate database URL format.
+
+        Ensures URL has proper scheme and is not a placeholder.
+        Supports SQLite (MVP) and PostgreSQL (production-ready).
+        """
+        if not v or v.strip() == "":
+            raise ValueError("DATABASE_URL is required and cannot be empty")
+
+        # Check for valid database schemes
+        valid_schemes = ["sqlite", "sqlite+aiosqlite", "postgresql", "postgresql+asyncpg"]
+        if not any(v.startswith(scheme + "://") or v.startswith(scheme + ":///") for scheme in valid_schemes):
+            raise ValueError(
+                f"DATABASE_URL must start with one of: {', '.join(valid_schemes)}. "
+                f"Got: {v[:20]}..."
+            )
+
+        # Warn if using relative SQLite path in production (not an error, just validation)
+        if "sqlite" in v and not v.startswith("sqlite:///:memory:"):
+            # This is fine for MVP, just ensure it's intentional
+            pass
+
+        return v
+
+    @field_validator("reddit_client_id", "reddit_client_secret", "reddit_username", "reddit_password")
+    @classmethod
+    def validate_reddit_credentials(cls, v: str, info) -> str:
+        """
+        Validate Reddit API credentials are set.
+
+        These are required for the agent to interact with Reddit.
+        """
+        field_name = info.field_name
+        if not v or v.strip() == "":
+            raise ValueError(
+                f"{field_name.upper()} is required. "
+                f"Get credentials from https://www.reddit.com/prefs/apps"
+            )
+
+        # Check for placeholder values
+        placeholders = [
+            "your_client_id_here",
+            "your_client_secret_here",
+            "your_reddit_username",
+            "your_reddit_password",
+            "YOUR_",
+            "CHANGE_ME",
+        ]
+        if any(placeholder.lower() in v.lower() for placeholder in placeholders):
+            raise ValueError(
+                f"{field_name.upper()} contains placeholder value. "
+                f"Set real credential from https://www.reddit.com/prefs/apps"
+            )
+
+        return v
+
+    @field_validator("reddit_user_agent")
+    @classmethod
+    def validate_user_agent(cls, v: str) -> str:
+        """
+        Validate Reddit user agent format.
+
+        Reddit requires descriptive user agents following their API rules:
+        platform:app_name:version (by /u/username)
+        """
+        if not v or v.strip() == "":
+            raise ValueError(
+                "REDDIT_USER_AGENT is required. "
+                "Format: platform:app_name:version (by /u/username)"
+            )
+
+        # Check for generic placeholder
+        if "MyRedditBot" in v or "YourUsername" in v:
+            raise ValueError(
+                "REDDIT_USER_AGENT contains placeholder values. "
+                "Update to: python:YourAppName:v1.0 (by /u/YourRedditUsername)"
+            )
+
+        # Warn if missing required components (not strict error, Reddit will enforce)
+        if ":" not in v or "(by /u/" not in v:
+            # This is more of a warning, but we'll allow it (Reddit API will reject if invalid)
+            pass
+
+        return v
+
+    @field_validator("openrouter_api_key")
+    @classmethod
+    def validate_openrouter_key(cls, v: str) -> str:
+        """
+        Validate OpenRouter API key format.
+
+        OpenRouter keys start with 'sk-or-v1-' prefix.
+        """
+        if not v or v.strip() == "":
+            raise ValueError(
+                "OPENROUTER_API_KEY is required. "
+                "Get one from https://openrouter.ai/keys"
+            )
+
+        # Check for placeholder
+        if "your-api-key-here" in v.lower() or "your_key" in v.lower() or v == "sk-or-v1-...":
+            raise ValueError(
+                "OPENROUTER_API_KEY contains placeholder value. "
+                "Get real key from https://openrouter.ai/keys"
+            )
+
+        # Check format (OpenRouter keys typically start with sk-or-v1-)
+        if not v.startswith("sk-or-"):
+            # Not a strict error - OpenRouter might change format
+            # But warn in logs (could add logging here if needed)
+            pass
+
         return v
 
 

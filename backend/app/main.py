@@ -16,6 +16,8 @@ from app.core.database import init_db, close_db
 from app.core.logging_config import setup_logging
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.logging import LoggingMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 
 
 @asynccontextmanager
@@ -63,28 +65,39 @@ app = FastAPI(
 # Note: Middleware is executed in reverse order of registration
 # (last registered = first executed)
 
+# Security headers middleware (runs last, adds headers to response)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Rate limiting middleware (protects all endpoints)
+app.add_middleware(
+    RateLimitMiddleware,
+    auth_limit=10,  # 10 requests/minute for auth endpoints
+    default_limit=60  # 60 requests/minute for other endpoints
+)
+
 # Logging middleware (runs after RequestID to access request_id)
 app.add_middleware(LoggingMiddleware)
 
 # Request ID middleware (first to run - sets correlation ID)
 app.add_middleware(RequestIDMiddleware)
 
-# CORS middleware
+# CORS middleware - configured from environment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Frontend URL
-    allow_credentials=True,
+    allow_origins=settings.cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
 # Import and include routers
-from app.api.v1 import health, auth, protected
+from app.api.v1 import health, auth, protected, settings as settings_router
 
 app.include_router(health.router, prefix=settings.api_v1_prefix, tags=["health"])
 app.include_router(auth.router, prefix=f"{settings.api_v1_prefix}/auth", tags=["auth"])
 app.include_router(protected.router, prefix=f"{settings.api_v1_prefix}/protected", tags=["protected"])
+app.include_router(settings_router.router, prefix=settings.api_v1_prefix, tags=["settings"])
 
 
 @app.get("/")
