@@ -97,7 +97,7 @@ async def update_belief(
             confidence=request.confidence,
             text=request.text,
             rationale=request.rationale,
-            updated_by=current_user.get("username", "admin")
+            updated_by=current_user.username if hasattr(current_user, "username") else "admin"
         )
 
         return BeliefUpdateResponse(
@@ -141,7 +141,7 @@ async def lock_belief(
             persona_id=request.persona_id,
             belief_id=belief_id,
             reason=request.reason,
-            updated_by=current_user.get("username", "admin")
+            updated_by=current_user.username if hasattr(current_user, "username") else "admin"
         )
 
         return {
@@ -179,7 +179,7 @@ async def unlock_belief(
             persona_id=request.persona_id,
             belief_id=belief_id,
             reason=request.reason,
-            updated_by=current_user.get("username", "admin")
+            updated_by=current_user.username if hasattr(current_user, "username") else "admin"
         )
 
         return {
@@ -248,7 +248,7 @@ async def nudge_belief(
             direction=direction,
             amount=request.amount,
             reason=f"Manual nudge: {direction} by {request.amount}",
-            updated_by=current_user.get("username", "admin")
+            updated_by=current_user.username if hasattr(current_user, "username") else "admin"
         )
 
         return BeliefUpdateResponse(

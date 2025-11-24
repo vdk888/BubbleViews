@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.core.security import User
@@ -37,7 +37,7 @@ async def seed_persona():
 
 @pytest.mark.anyio
 async def test_personas_endpoint():
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         persona_id = await seed_persona()
         resp = await client.get("/api/v1/personas")
         assert resp.status_code == 200
@@ -59,7 +59,7 @@ async def test_activity_endpoint():
         session.add(interaction)
         await session.commit()
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(f"/api/v1/activity?persona_id={persona_id}")
         assert resp.status_code == 200
         body = resp.json()
@@ -81,7 +81,7 @@ async def test_moderation_pending_and_approve():
         await session.commit()
         pending_id = pending.id
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         pending_resp = await client.get(f"/api/v1/moderation/pending?persona_id={persona_id}")
         assert pending_resp.status_code == 200
         assert len(pending_resp.json()) == 1
@@ -119,7 +119,7 @@ async def test_belief_graph_and_history():
         await session.commit()
         belief_id = belief.id
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         graph_resp = await client.get(f"/api/v1/beliefs?persona_id={persona_id}")
         assert graph_resp.status_code == 200
         assert graph_resp.json()["nodes"][0]["id"] == belief_id
@@ -154,7 +154,7 @@ async def test_belief_manual_update():
         await session.commit()
         belief_id = belief.id
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Update belief confidence
         update_resp = await client.put(
             f"/api/v1/beliefs/{belief_id}",
@@ -197,7 +197,7 @@ async def test_belief_lock_unlock():
         await session.commit()
         belief_id = belief.id
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Lock the belief
         lock_resp = await client.post(
             f"/api/v1/beliefs/{belief_id}/lock",
@@ -268,7 +268,7 @@ async def test_belief_nudge():
         await session.commit()
         belief_id = belief.id
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Nudge confidence up
         nudge_resp = await client.post(
             f"/api/v1/beliefs/{belief_id}/nudge",
@@ -325,7 +325,7 @@ async def test_belief_nudge_with_locked_stance():
         await session.commit()
         belief_id = belief.id
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # Try to nudge (should fail)
         nudge_resp = await client.post(
             f"/api/v1/beliefs/{belief_id}/nudge",
