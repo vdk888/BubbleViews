@@ -99,8 +99,16 @@ class SQLiteMemoryStore(IMemoryStore):
                     "summary": node.summary,
                     "confidence": node.current_confidence,
                     "tags": node.get_tags(),
-                    "created_at": node.created_at.isoformat() if node.created_at else None,
-                    "updated_at": node.updated_at.isoformat() if node.updated_at else None,
+                    "created_at": (
+                        node.created_at.isoformat()
+                        if hasattr(node.created_at, "isoformat")
+                        else node.created_at
+                    ),
+                    "updated_at": (
+                        node.updated_at.isoformat()
+                        if hasattr(node.updated_at, "isoformat")
+                        else node.updated_at
+                    ),
                 }
                 for node in nodes
             ]
@@ -112,7 +120,11 @@ class SQLiteMemoryStore(IMemoryStore):
                     "target_id": edge.target_id,
                     "relation": edge.relation,
                     "weight": edge.weight,
-                    "created_at": edge.created_at.isoformat() if edge.created_at else None,
+                    "created_at": (
+                        edge.created_at.isoformat()
+                        if hasattr(edge.created_at, "isoformat")
+                        else edge.created_at
+                    ),
                 }
                 for edge in edges
             ]
@@ -451,7 +463,9 @@ class SQLiteMemoryStore(IMemoryStore):
                     "metadata": interaction.get_metadata(),
                     "similarity_score": similarity_score,
                     "created_at": (
-                        interaction.created_at.isoformat() if interaction.created_at else None
+                        interaction.created_at.isoformat()
+                        if hasattr(interaction.created_at, "isoformat")
+                        else interaction.created_at
                     ),
                 })
 
@@ -542,8 +556,16 @@ class SQLiteMemoryStore(IMemoryStore):
                 "summary": belief.summary,
                 "current_confidence": belief.current_confidence,
                 "tags": belief.get_tags(),
-                "created_at": belief.created_at.isoformat() if belief.created_at else None,
-                "updated_at": belief.updated_at.isoformat() if belief.updated_at else None,
+                "created_at": (
+                    belief.created_at.isoformat()
+                    if hasattr(belief.created_at, "isoformat")
+                    else belief.created_at
+                ),
+                "updated_at": (
+                    belief.updated_at.isoformat()
+                    if hasattr(belief.updated_at, "isoformat")
+                    else belief.updated_at
+                ),
             }
 
             # Sort and format stances (newest first)
@@ -555,7 +577,11 @@ class SQLiteMemoryStore(IMemoryStore):
                     "confidence": stance.confidence,
                     "status": stance.status,
                     "rationale": stance.rationale,
-                    "created_at": stance.created_at.isoformat() if stance.created_at else None,
+                    "created_at": (
+                        stance.created_at.isoformat()
+                        if hasattr(stance.created_at, "isoformat")
+                        else stance.created_at
+                    ),
                 }
                 for stance in stances
             ]
@@ -568,7 +594,11 @@ class SQLiteMemoryStore(IMemoryStore):
                     "source_type": ev.source_type,
                     "source_ref": ev.source_ref,
                     "strength": ev.strength,
-                    "created_at": ev.created_at.isoformat() if ev.created_at else None,
+                    "created_at": (
+                        ev.created_at.isoformat()
+                        if hasattr(ev.created_at, "isoformat")
+                        else ev.created_at
+                    ),
                 }
                 for ev in evidence
             ]
@@ -583,7 +613,11 @@ class SQLiteMemoryStore(IMemoryStore):
                     "reason": upd.reason,
                     "trigger_type": upd.trigger_type,
                     "updated_by": upd.updated_by,
-                    "created_at": upd.created_at.isoformat() if upd.created_at else None,
+                    "created_at": (
+                        upd.created_at.isoformat()
+                        if hasattr(upd.created_at, "isoformat")
+                        else upd.created_at
+                    ),
                 }
                 for upd in updates
             ]

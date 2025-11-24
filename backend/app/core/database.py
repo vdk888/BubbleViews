@@ -12,14 +12,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
     async_sessionmaker,
 )
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import event
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
-
-
-# SQLAlchemy declarative base for ORM models
-Base = declarative_base()
+from app.models.base import Base
 
 
 def get_async_engine() -> AsyncEngine:
@@ -38,10 +35,8 @@ def get_async_engine() -> AsyncEngine:
         Engine is created once at application startup and reused.
         Connection pool configuration is optimized for SQLite MVP.
     """
-    # SQLite-specific connection arguments
-    connect_args = {
-        "check_same_thread": False,  # Required for async SQLite
-    }
+    # SQLite-specific connection arguments (noop for other drivers)
+    connect_args: dict = {"check_same_thread": False}
 
     # Create async engine
     engine = create_async_engine(
@@ -51,6 +46,15 @@ def get_async_engine() -> AsyncEngine:
         poolclass=StaticPool,  # SQLite works best with StaticPool
         connect_args=connect_args,
     )
+
+    # SQLite connection pragmas for FK enforcement and WAL support.
+    if "sqlite" in settings.database_url:
+        @event.listens_for(engine.sync_engine, "connect")
+        def _set_sqlite_pragma(dbapi_connection, connection_record):  # noqa: ANN001
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.close()
 
     return engine
 
@@ -87,15 +91,17 @@ async def init_db() -> None:
         async def startup():
             await init_db()
     """
-    async with engine.begin() as conn:
-        # Import all models here to ensure they're registered
-        # This is necessary for Base.metadata.create_all() to work
-        # from app.models import belief, interaction, pending_post
+    # Import models to ensure metadata is populated before create_all()
+    # Avoiding circular imports by importing inside the function.
+    from app import models  # noqa: F401
 
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-        # Enable WAL mode for better concurrency (SQLite specific)
-        await conn.execute("PRAGMA journal_mode=WAL")
+        # SQLite-specific pragmas for integrity and concurrency.
+        if "sqlite" in settings.database_url:
+            await conn.execute("PRAGMA foreign_keys=ON")
+            await conn.execute("PRAGMA journal_mode=WAL")
 
 
 async def close_db() -> None:

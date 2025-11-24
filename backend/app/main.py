@@ -92,12 +92,27 @@ app.add_middleware(
 
 
 # Import and include routers
-from app.api.v1 import health, auth, protected, settings as settings_router
+from app.api.v1 import (
+    health,
+    auth,
+    protected,
+    settings as settings_router,
+    personas,
+    activity,
+    beliefs,
+    moderation,
+    stats,
+)
 
 app.include_router(health.router, prefix=settings.api_v1_prefix, tags=["health"])
 app.include_router(auth.router, prefix=f"{settings.api_v1_prefix}/auth", tags=["auth"])
 app.include_router(protected.router, prefix=f"{settings.api_v1_prefix}/protected", tags=["protected"])
 app.include_router(settings_router.router, prefix=settings.api_v1_prefix, tags=["settings"])
+app.include_router(personas.router, prefix=settings.api_v1_prefix, tags=["personas"])
+app.include_router(activity.router, prefix=settings.api_v1_prefix, tags=["activity"])
+app.include_router(beliefs.router, prefix=settings.api_v1_prefix, tags=["beliefs"])
+app.include_router(moderation.router, prefix=settings.api_v1_prefix, tags=["moderation"])
+app.include_router(stats.router, prefix=settings.api_v1_prefix, tags=["stats"])
 
 
 @app.get("/")
