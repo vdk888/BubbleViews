@@ -2,7 +2,7 @@
 
 ## Key Architecture Decisions
 - **Database**: SQLite with JSON1 extension (simpler setup, file-based, good for MVP)
-- **LLM Provider**: OpenRouter (model-agnostic) with GPT-4o-mini and Claude-3.5-Haiku
+- **LLM Provider**: OpenRouter (model-agnostic) with GPT-5.1-mini and Claude-4.5-Haiku
 - **Deployment**: Single DigitalOcean droplet (simplified, no Docker for MVP)
 - **Cost**: ~$6.25/month total (vs $50+ for PostgreSQL + premium LLMs)
 
@@ -29,8 +29,8 @@ Create `docs/decisions/ADR-001-tech-stack.md` documenting:
 **Frontend**: Next.js 14 with TypeScript (SSR, type safety)
 **Database**: SQLite with JSON1 extension (JSON support for belief graph, zero setup)
 **LLM**: OpenRouter API (model-agnostic gateway)
-  - Primary: `openai/gpt-4o-mini` (fast, cheap responses - $0.15/1M tokens)
-  - Secondary: `anthropic/claude-3.5-haiku` (consistency checks - $0.25/1M tokens)
+  - Primary: `openai/gpt-5.1-mini` (fast, cheap responses - $0.15/1M tokens)
+  - Secondary: `anthropic/claude-4.5-haiku` (consistency checks - $0.25/1M tokens)
 **Deployment**: DigitalOcean droplet ($6/month, 1GB RAM)
 **Message Queue**: In-memory (asyncio.Queue) for MVP, upgrade to Redis later
 
@@ -204,8 +204,8 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # Model selection (can switch without code changes)
-    response_model: str = "openai/gpt-4o-mini"
-    consistency_model: str = "anthropic/claude-3.5-haiku"
+    response_model: str = "openai/gpt-5.1-mini"
+    consistency_model: str = "anthropic/claude-4.5-haiku"
 
     # Agent config
     target_subreddits: List[str] = ["test", "bottest"]
@@ -240,8 +240,8 @@ OPENROUTER_API_KEY=sk-proj-guyaw7kLKumUkummEC6T3B1bkFJ...
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
 # Model selection (switch models here)
-RESPONSE_MODEL=openai/gpt-4o-mini
-CONSISTENCY_MODEL=anthropic/claude-3.5-haiku
+RESPONSE_MODEL=openai/gpt-5.1-mini
+CONSISTENCY_MODEL=anthropic/claude-4.5-haiku
 
 # Agent config
 TARGET_SUBREDDITS=["test","bottest"]
@@ -506,7 +506,7 @@ class OpenRouterClient(ILLMClient):
         user_message: str,
         tools: Optional[List[Dict]] = None
     ) -> Dict:
-        """Generate response using GPT-4o-mini (fast, cheap)"""
+        """Generate response using GPT-5.1-mini (fast, cheap)"""
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -572,8 +572,8 @@ Respond with JSON:
         """Calculate cost based on token usage and model pricing"""
         # OpenRouter pricing (approximate)
         pricing = {
-            "openai/gpt-4o-mini": {"input": 0.15/1_000_000, "output": 0.60/1_000_000},
-            "anthropic/claude-3.5-haiku": {"input": 0.25/1_000_000, "output": 1.25/1_000_000}
+            "openai/gpt-5.1-mini": {"input": 0.15/1_000_000, "output": 0.60/1_000_000},
+            "anthropic/claude-4.5-haiku": {"input": 0.25/1_000_000, "output": 1.25/1_000_000}
         }
 
         if model in pricing:
@@ -592,7 +592,7 @@ from app.services.llm_client import OpenRouterClient
 async def test_openrouter():
     client = OpenRouterClient()
 
-    # Test GPT-4o-mini
+    # Test GPT-5.1-mini
     response = await client.generate_response(
         system_prompt="You are a helpful assistant.",
         context={},
@@ -657,7 +657,7 @@ if __name__ == "__main__":
 **Service 6: Agent Logic** (Days 1-2)
 - Decision engine: perception → retrieval → decision
 - Context assembly from belief graph (nodes/edges + current stance) + episodic memory retrieval (similar past comments)
-- Draft response generation using GPT-4o-mini
+- Draft response generation using GPT-5.1-mini
 - Contract tests: context → valid response; ensures retrieved past statements included when available
 
 **Service 7: Belief Updater** (Days 3-4)
@@ -717,7 +717,7 @@ Key endpoints:
 | Database | SQLite + JSON1 | Zero setup, JSON support, ACID |
 | ORM | SQLAlchemy + aiosqlite | Async, migrations via Alembic |
 | LLM | OpenRouter API | Model-agnostic, cost-effective |
-| Models | GPT-4o-mini + Claude-3.5-Haiku | $0.15-0.25/1M tokens |
+| Models | GPT-5.1-mini + Claude-4.5-Haiku | $0.15-0.25/1M tokens |
 | Embeddings | sentence-transformers | Local generation (all-MiniLM-L6-v2) |
 | Vector Search | FAISS (CPU) | In-memory, <10K vectors |
 | Reddit API | asyncpraw | Rate limiting, async support |
@@ -764,9 +764,9 @@ sudo systemctl enable reddit-agent
 ## Cost Analysis
 
 **OpenRouter LLM Costs** (estimated for MVP):
-- GPT-4o-mini: $0.15/1M input, $0.60/1M output
+- GPT-5.1-mini: $0.15/1M input, $0.60/1M output
   - 10 responses/day × 1000 tokens avg = 0.3M tokens/month = **$0.18/month**
-- Claude-3.5-Haiku: $0.25/1M input, $1.25/1M output
+- Claude-4.5-Haiku: $0.25/1M input, $1.25/1M output
   - 10 checks/day × 500 tokens avg = 0.15M tokens/month = **$0.04/month**
 - **Total LLM cost**: ~$0.25/month
 
@@ -789,7 +789,7 @@ sudo systemctl enable reddit-agent
 
 ### Phase 0 (Week 1)
 - SQLite database created with JSON1 extension enabled
-- OpenRouter client successfully calls both models (GPT-4o-mini + Haiku)
+- OpenRouter client successfully calls both models (GPT-5.1-mini + Haiku)
 - FAISS index saves/loads correctly
 - Credentials imported from config.json to .env
 - Docker Compose stack starts (optional)
@@ -798,7 +798,7 @@ sudo systemctl enable reddit-agent
 - Onboarding docs complete
 
 ### Phase 1 (Weeks 2-4)
-- Agent posts 1 comment/day in test subreddit using GPT-4o-mini
+- Agent posts 1 comment/day in test subreddit using GPT-5.1-mini
 - Belief graph stores 10 initial beliefs (nodes + edges + stance versions) in SQLite
 - Belief consistency check using Claude-3.5-Haiku
 - Dashboard displays activity feed, moderation queue, and belief graph snapshot
@@ -892,8 +892,8 @@ REDDIT_USERNAME=ImprovementMain7109
 REDDIT_PASSWORD=ImprovementMain7109
 OPENROUTER_API_KEY=sk-proj-guyaw7kLKumUkummEC6T3B1bkFJ...
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-RESPONSE_MODEL=openai/gpt-4o-mini
-CONSISTENCY_MODEL=anthropic/claude-3.5-haiku
+RESPONSE_MODEL=openai/gpt-5.1-mini
+CONSISTENCY_MODEL=anthropic/claude-4.5-haiku
 TARGET_SUBREDDITS=["test","bottest"]
 AUTO_POSTING_ENABLED=false
 SECRET_KEY=$(openssl rand -hex 32)
