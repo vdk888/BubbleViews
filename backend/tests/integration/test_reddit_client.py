@@ -12,11 +12,26 @@ They use comprehensive mocks to simulate Reddit API behavior.
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import asyncio
+import sys
+
+# Mock asyncpraw before any imports
+sys.modules['asyncpraw'] = MagicMock()
+sys.modules['asyncpraw.exceptions'] = MagicMock()
+sys.modules['asyncpraw.models'] = MagicMock()
+
+# Create mock exception class
+class RedditAPIException(Exception):
+    """Mock RedditAPIException for testing."""
+    def __init__(self):
+        self.error_type = None
+        super().__init__()
+
+sys.modules['asyncpraw'].exceptions.RedditAPIException = RedditAPIException
+sys.modules['asyncpraw.exceptions'].RedditAPIException = RedditAPIException
 
 from app.services.reddit_client import AsyncPRAWClient
-from asyncpraw.exceptions import RedditAPIException
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 "use client";
 
-import { usePersona } from "@/hooks/usePersona";
 import { StatsSummary } from "@/components/StatsSummary";
+import { usePersona } from "@/hooks/usePersona";
 import Link from "next/link";
 
 export default function Home() {
@@ -9,111 +9,120 @@ export default function Home() {
 
   if (isLoading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="page-shell">
         <div className="animate-pulse">
-          <div className="h-8 bg-zinc-200 dark:bg-zinc-700 rounded w-1/4 mb-4"></div>
-          <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-1/2 mb-8"></div>
+          <div className="h-8 bg-[var(--card)] rounded w-1/4 mb-4"></div>
+          <div className="h-4 bg-[var(--card)] rounded w-1/2 mb-8"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-2">
-          Dashboard
-        </h1>
-        <p className="text-zinc-600 dark:text-zinc-400">
-          Monitor and manage your autonomous Reddit AI agent
-        </p>
+    <div className="page-shell">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr,0.8fr] gap-8 mb-10">
+        <div className="space-y-4">
+          <span className="chip">Dashboard</span>
+          <h1>Bubble. Dashboard</h1>
+          <p className="tagline">L'investissement optimise a l'ere de l'IA</p>
+          <p className="text-lg muted max-w-2xl">
+            Une interface claire, transparente et sobre pour piloter votre agent Reddit autonome,
+            suivre ses interactions et controler sa gouvernance.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/activity" className="pill-button text-sm">
+              Voir l'activite
+            </Link>
+            <Link href="/moderation" className="soft-button text-sm">
+              File de moderation
+            </Link>
+          </div>
+        </div>
+
+        <div className="card glass shadow-strong p-6">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-semibold text-[var(--text-secondary)]">Statut</p>
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--primary)]">
+              <span className="h-2.5 w-2.5 rounded-full bg-[var(--primary)]"></span>
+              Synchro temps reel
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-[var(--primary)] mb-2">
+            MVP Dashboard - Semaine 4
+          </p>
+          <p className="muted mb-4">
+            Visualisez les croyances, pilotez la moderation et assurez la transparence des actions
+            de l'agent. Identite alignee sur la charte officielle Bubble.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <span className="chip">Transparence</span>
+            <span className="chip">Innovation</span>
+            <span className="chip">Accessibilite</span>
+          </div>
+        </div>
       </div>
 
-      {/* Stats Summary */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-white mb-4">
-          Overview
-        </h2>
+      <div className="section pt-0">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold">Vue synthetique</h2>
+          <p className="muted text-sm">Donnees cles en direct</p>
+        </div>
         <StatsSummary personaId={selectedPersonaId} />
       </div>
 
-      {/* Quick Actions */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-white mb-4">
-          Quick Actions
-        </h2>
+      <div className="section pt-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold">Actions rapides</h2>
+          <p className="muted text-sm">Controlez l'essentiel en deux clics</p>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link
             href="/activity"
-            className="bg-white dark:bg-zinc-800 rounded-lg shadow p-6 border border-zinc-200 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
+            className="card p-5 transition duration-300 ease-out hover:-translate-y-1 hover:shadow-strong"
           >
-            <div className="text-2xl mb-2">📊</div>
-            <h3 className="font-medium text-zinc-900 dark:text-white mb-1">
-              View Activity
-            </h3>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Browse recent Reddit interactions
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-[var(--text-secondary)]">Activity</span>
+              <span className="text-lg">-></span>
+            </div>
+            <h4 className="mb-2">View Activity</h4>
+            <p className="muted text-sm">Parcourir les interactions Reddit recentes.</p>
           </Link>
 
           <Link
             href="/moderation"
-            className="bg-white dark:bg-zinc-800 rounded-lg shadow p-6 border border-zinc-200 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
+            className="card p-5 transition duration-300 ease-out hover:-translate-y-1 hover:shadow-strong"
           >
-            <div className="text-2xl mb-2">✅</div>
-            <h3 className="font-medium text-zinc-900 dark:text-white mb-1">
-              Review Queue
-            </h3>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Approve or reject pending posts
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-[var(--text-secondary)]">Review</span>
+              <span className="text-lg">-></span>
+            </div>
+            <h4 className="mb-2">Review Queue</h4>
+            <p className="muted text-sm">Approuver ou rejeter les contenus en attente.</p>
           </Link>
 
           <Link
             href="/beliefs"
-            className="bg-white dark:bg-zinc-800 rounded-lg shadow p-6 border border-zinc-200 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
+            className="card p-5 transition duration-300 ease-out hover:-translate-y-1 hover:shadow-strong"
           >
-            <div className="text-2xl mb-2">🧠</div>
-            <h3 className="font-medium text-zinc-900 dark:text-white mb-1">
-              Belief Graph
-            </h3>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Explore agent belief system
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-[var(--text-secondary)]">Beliefs</span>
+              <span className="text-lg">-></span>
+            </div>
+            <h4 className="mb-2">Belief Graph</h4>
+            <p className="muted text-sm">Explorer le graphe de croyances de l'agent.</p>
           </Link>
 
           <Link
             href="/settings"
-            className="bg-white dark:bg-zinc-800 rounded-lg shadow p-6 border border-zinc-200 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
+            className="card p-5 transition duration-300 ease-out hover:-translate-y-1 hover:shadow-strong"
           >
-            <div className="text-2xl mb-2">⚙️</div>
-            <h3 className="font-medium text-zinc-900 dark:text-white mb-1">
-              Settings
-            </h3>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Configure agent behavior
-            </p>
-          </Link>
-        </div>
-      </div>
-
-      {/* Status */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-        <div className="flex items-start">
-          <div className="flex-shrink-0">
-            <span className="text-2xl">ℹ️</span>
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
-              MVP Dashboard - Week 4
-            </h3>
-            <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
-              <p>
-                This dashboard provides monitoring and control for your autonomous Reddit AI agent.
-                Features include activity tracking, belief graph visualization, and moderation queue management.
-              </p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-[var(--text-secondary)]">Governance</span>
+              <span className="text-lg">-></span>
             </div>
-          </div>
+            <h4 className="mb-2">Settings</h4>
+            <p className="muted text-sm">Configurer l'agent et ses comportements.</p>
+          </Link>
         </div>
       </div>
     </div>

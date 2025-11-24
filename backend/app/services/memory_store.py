@@ -44,15 +44,41 @@ class SQLiteMemoryStore(IMemoryStore):
     All operations enforce persona isolation and include proper error handling.
     """
 
-    def __init__(self, session_maker=async_session_maker):
+    def __init__(self, session_or_maker=None):
         """
         Initialize memory store with embedding service.
 
         Args:
-            session_maker: async session factory (injectable for tests/overrides)
+            session_or_maker: Either an AsyncSession (for tests) or async session factory.
+                             Defaults to the global async_session_maker.
         """
         self.embedding_service = get_embedding_service()
-        self.session_maker = session_maker
+
+        # Handle both session and session_maker
+        if session_or_maker is None:
+            self.session_maker = async_session_maker
+            self.provided_session = None
+        elif callable(session_or_maker):
+            self.session_maker = session_or_maker
+            self.provided_session = None
+        else:
+            # It's a session object, not a maker
+            self.session_maker = None
+            self.provided_session = session_or_maker
+
+    def _get_session(self):
+        """Get session context manager or provided session."""
+        if self.provided_session is not None:
+            # Return a no-op context manager that yields the provided session
+            from contextlib import asynccontextmanager
+
+            @asynccontextmanager
+            async def session_context():
+                yield self.provided_session
+
+            return session_context()
+        else:
+            return self.session_maker()
 
     async def query_belief_graph(
         self,

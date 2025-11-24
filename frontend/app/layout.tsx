@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bubble — Dashboard",
-  description: "Bubble. Dashboard aligné sur la charte graphique officielle.",
+  title: "Bubble - Dashboard",
+  description: "Bubble. Dashboard aligne sur la charte graphique officielle.",
 };
 
 const navigation = [
@@ -26,6 +26,7 @@ const navigation = [
   { name: "Activity", href: "/activity" },
   { name: "Beliefs", href: "/beliefs" },
   { name: "Moderation", href: "/moderation" },
+  { name: "Governor", href: "/governor" },
   { name: "Settings", href: "/settings" },
 ];
 
@@ -71,7 +72,7 @@ export default function RootLayout({
                     href="/settings"
                     className="soft-button text-sm hidden sm:inline-flex"
                   >
-                    Préférences
+                    Preferences
                   </Link>
                 </div>
               </div>
@@ -83,7 +84,7 @@ export default function RootLayout({
           <footer className="border-t border-[var(--border)] bg-white">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
               <p className="text-center text-sm text-[var(--text-secondary)]">
-                Bubble. Dashboard — identité alignée avec la charte graphique officielle.
+                Bubble. Dashboard - identite alignee avec la charte graphique officielle.
               </p>
             </div>
           </footer>

@@ -6,8 +6,14 @@ working together with real database interactions.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, Mock
 import json
+import sys
+
+# Mock asyncpraw before any imports
+sys.modules['asyncpraw'] = MagicMock()
+sys.modules['asyncpraw.exceptions'] = MagicMock()
+sys.modules['asyncpraw.models'] = MagicMock()
 
 from app.services.memory_store import SQLiteMemoryStore
 from app.services.reddit_client import AsyncPRAWClient

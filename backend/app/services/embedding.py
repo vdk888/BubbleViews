@@ -105,9 +105,7 @@ class EmbeddingService:
         loop = asyncio.get_event_loop()
         embedding = await loop.run_in_executor(
             None,
-            model.encode,
-            text.strip(),
-            {"show_progress_bar": False, "convert_to_numpy": True}
+            lambda: model.encode(text.strip(), show_progress_bar=False, convert_to_numpy=True)
         )
 
         return embedding.astype(np.float32)

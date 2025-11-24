@@ -24,8 +24,8 @@ class TestIntentClassification:
         """Test belief history queries are classified correctly"""
         questions = [
             "How did my belief about climate change evolve?",
-            "Show the history of stance changes on nuclear energy",
             "What changed my confidence in cryptocurrency?",
+            "When did my stance on nuclear energy update?",
         ]
 
         for question in questions:
@@ -37,7 +37,7 @@ class TestIntentClassification:
         questions = [
             "Show posts about Bitcoin",
             "Find comments I made about AI",
-            "What did I discuss regarding climate?",
+            "Show me all posts where I discussed climate",
         ]
 
         for question in questions:

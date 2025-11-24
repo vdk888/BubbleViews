@@ -141,6 +141,10 @@ body {
   box-shadow: var(--shadow-strong);
 }
 
+.shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
 .section {
   padding: 4rem 0;
 }

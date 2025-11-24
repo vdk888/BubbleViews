@@ -151,6 +151,31 @@ export interface SettingsResponse {
   config: Record<string, unknown>;
 }
 
+export interface DailyCostData {
+  date: string;
+  cost: number;
+  interactions: number;
+  tokens: number;
+}
+
+export interface ModelBreakdownData {
+  model: string;
+  cost: number;
+  count: number;
+  percentage: number;
+}
+
+export interface CostStatsResponse {
+  total_cost: number;
+  total_interactions: number;
+  avg_cost_per_interaction: number;
+  total_tokens_in: number;
+  total_tokens_out: number;
+  projected_monthly_cost: number;
+  daily_costs: DailyCostData[];
+  model_breakdown: ModelBreakdownData[];
+}
+
 class ApiClient {
   private baseUrl: string;
   private token: string | null = null;
@@ -318,6 +343,20 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(data),
     });
+  }
+
+  // Cost endpoints
+  async getCostStats(
+    persona_id: string,
+    period: "7d" | "30d" | "90d" | "all" = "30d"
+  ): Promise<CostStatsResponse> {
+    const params = new URLSearchParams({ persona_id, period });
+    return this.request(`/api/v1/costs/stats?${params}`);
+  }
+
+  exportCosts(persona_id: string, period: "7d" | "30d" | "90d" | "all" = "30d"): string {
+    const params = new URLSearchParams({ persona_id, period });
+    return `${this.baseUrl}/api/v1/costs/export?${params}`;
   }
 }
 

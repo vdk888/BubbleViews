@@ -52,11 +52,9 @@ export default function SettingsPage() {
 
   if (!selectedPersonaId) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-          <p className="text-yellow-800 dark:text-yellow-200">
-            Please select a persona to view settings
-          </p>
+      <div className="page-shell">
+        <div className="card p-4 bg-[var(--card)]">
+          <p className="muted">Selectionnez une persona pour acceder aux parametres.</p>
         </div>
       </div>
     );
@@ -65,65 +63,50 @@ export default function SettingsPage() {
   const autoPostingEnabled = settings?.config.auto_posting_enabled as boolean | undefined;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="page-shell">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-2">
-          Settings
-        </h1>
-        <p className="text-zinc-600 dark:text-zinc-400">
-          Configure agent behavior and preferences
+        <h1>Settings</h1>
+        <p className="muted max-w-2xl">
+          Ajustez le comportement de l'agent en coherence avec la promesse Bubble : transparence et controle.
         </p>
       </div>
 
-      {/* Error State */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
-          <p className="text-red-800 dark:text-red-200">{error}</p>
+        <div className="border border-red-200 bg-red-50 rounded-lg p-4 mb-6">
+          <p className="text-red-800">{error}</p>
         </div>
       )}
 
-      {/* Loading State */}
       {loading && (
         <div className="space-y-6">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="bg-white dark:bg-zinc-800 rounded-lg shadow p-6 border border-zinc-200 dark:border-zinc-700 animate-pulse"
-            >
-              <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-1/3 mb-2"></div>
-              <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-2/3"></div>
+            <div key={i} className="card p-6 animate-pulse">
+              <div className="h-4 bg-[var(--card)] rounded w-1/3 mb-2"></div>
+              <div className="h-4 bg-[var(--card)] rounded w-2/3"></div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Settings List */}
       {!loading && settings && (
         <div className="space-y-6">
-          {/* Agent Behavior */}
-          <div className="bg-white dark:bg-zinc-800 rounded-lg shadow border border-zinc-200 dark:border-zinc-700">
-            <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-700">
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
-                Agent Behavior
-              </h2>
+          <div className="card border-[var(--border)]">
+            <div className="px-6 py-4 border-b border-[var(--border)]">
+              <h2 className="text-lg font-semibold">Agent Behavior</h2>
             </div>
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between py-3">
                 <div className="flex-1">
-                  <h3 className="text-sm font-medium text-zinc-900 dark:text-white mb-1">
-                    Auto-Posting
-                  </h3>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                    Allow agent to post autonomously without manual review
+                  <h3 className="text-sm font-semibold text-[var(--primary)] mb-1">Auto-Posting</h3>
+                  <p className="text-sm muted">
+                    Autoriser l'agent a publier en autonomie sans relecture manuelle.
                   </p>
                 </div>
                 <button
                   onClick={() => handleToggleSetting("auto_posting_enabled", autoPostingEnabled || false)}
                   disabled={saving}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
-                    autoPostingEnabled
-                      ? "bg-blue-600"
-                      : "bg-zinc-200 dark:bg-zinc-700"
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2 disabled:opacity-50 ${
+                    autoPostingEnabled ? "bg-[var(--primary)]" : "bg-[var(--border)]"
                   }`}
                 >
                   <span
@@ -136,20 +119,15 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Persona Information */}
-          <div className="bg-white dark:bg-zinc-800 rounded-lg shadow border border-zinc-200 dark:border-zinc-700">
-            <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-700">
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
-                Persona Information
-              </h2>
+          <div className="card border-[var(--border)]">
+            <div className="px-6 py-4 border-b border-[var(--border)]">
+              <h2 className="text-lg font-semibold">Persona Information</h2>
             </div>
             <div className="p-6">
               <dl className="space-y-4">
                 <div>
-                  <dt className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Persona ID
-                  </dt>
-                  <dd className="mt-1 text-sm text-zinc-900 dark:text-white font-mono">
+                  <dt className="text-sm font-semibold text-[var(--text-secondary)]">Persona ID</dt>
+                  <dd className="mt-1 text-sm font-mono text-[var(--primary)] break-all">
                     {selectedPersonaId}
                   </dd>
                 </div>
@@ -157,37 +135,28 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Raw Configuration */}
-          <div className="bg-white dark:bg-zinc-800 rounded-lg shadow border border-zinc-200 dark:border-zinc-700">
-            <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-700">
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
-                Raw Configuration
-              </h2>
+          <div className="card border-[var(--border)]">
+            <div className="px-6 py-4 border-b border-[var(--border)]">
+              <h2 className="text-lg font-semibold">Raw Configuration</h2>
             </div>
             <div className="p-6">
-              <pre className="text-xs bg-zinc-50 dark:bg-zinc-900 p-4 rounded border border-zinc-200 dark:border-zinc-700 overflow-x-auto">
+              <pre className="text-xs bg-[var(--card)] p-4 rounded border border-[var(--border)] overflow-x-auto">
                 {JSON.stringify(settings.config, null, 2)}
               </pre>
             </div>
           </div>
 
-          {/* Info */}
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="border border-[var(--chart-border)] bg-[var(--chart-bg-light)] rounded-lg p-4">
             <div className="flex items-start">
-              <div className="flex-shrink-0">
-                <span className="text-2xl">ℹ️</span>
+              <div className="flex-shrink-0 h-9 w-9 rounded-full border border-[var(--chart-border)] flex items-center justify-center">
+                <span className="text-[var(--chart-primary)] font-bold">i</span>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                  Settings Storage
-                </h3>
-                <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
-                  <p>
-                    Settings are stored per-persona in the database. Changes take effect immediately.
-                    Use the auto-posting toggle to control whether the agent posts autonomously or
-                    requires manual approval.
-                  </p>
-                </div>
+                <h3 className="text-sm font-semibold text-[var(--primary)]">Stockage des parametres</h3>
+                <p className="text-sm text-[var(--text-secondary)] mt-1">
+                  Chaque persona possede ses propres preferences stockees en base. Les changements sont immediats pour
+                  l'agent.
+                </p>
               </div>
             </div>
           </div>

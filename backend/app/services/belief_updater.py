@@ -33,6 +33,7 @@ from typing import Dict, Optional, Any, Literal
 from enum import Enum
 
 from app.services.interfaces.memory_store import IMemoryStore
+from app.services.event_publisher import event_publisher
 
 logger = logging.getLogger(__name__)
 
@@ -269,6 +270,20 @@ class BeliefUpdater:
                 "stance_id": new_stance_id,
                 "evidence_strength": evidence_strength.value,
                 "direction": direction,
+                "updated_by": updated_by
+            }
+        )
+
+        # Publish event for real-time dashboard updates
+        await event_publisher.publish_belief_updated(
+            persona_id=persona_id,
+            belief_update_data={
+                "belief_id": belief_id,
+                "old_confidence": current_confidence,
+                "new_confidence": new_confidence,
+                "evidence_strength": evidence_strength.value,
+                "direction": direction,
+                "reason": reason,
                 "updated_by": updated_by
             }
         )

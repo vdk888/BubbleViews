@@ -214,9 +214,9 @@ export function BeliefGraphViz({ nodes, edges, onNodeClick }: BeliefGraphVizProp
         width={800}
         height={600}
         onClick={handleCanvasClick}
-        className="border border-zinc-300 dark:border-zinc-600 rounded cursor-pointer bg-white dark:bg-zinc-900"
+        className="border border-[var(--border)] rounded cursor-pointer bg-white shadow-soft"
       />
-      <div className="mt-4 flex items-center gap-6 text-sm text-zinc-600 dark:text-zinc-400">
+      <div className="mt-4 flex items-center gap-6 text-sm text-[var(--text-secondary)]">
         <div className="flex items-center gap-2">
           <div className="w-4 h-0.5 bg-green-500"></div>
           <span>Supports</span>

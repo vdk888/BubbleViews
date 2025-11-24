@@ -395,8 +395,10 @@ class TestSubmitPost:
         mock_subreddit = AsyncMock()
         mock_reddit.subreddit = AsyncMock(return_value=mock_subreddit)
 
-        # Simulate ban error
-        error = RedditAPIException()
+        # Simulate ban error - RedditAPIException expects tuples (error_type, message, field)
+        error = RedditAPIException(items=[
+            ('SUBREDDIT_NOTALLOWED', 'You are banned from this subreddit', '')
+        ])
         error.error_type = "SUBREDDIT_NOTALLOWED"
         mock_subreddit.submit = AsyncMock(side_effect=error)
 
@@ -473,8 +475,11 @@ class TestReply:
         mock_submission = AsyncMock()
         mock_reddit.submission = AsyncMock(return_value=mock_submission)
 
-        # Simulate locked error
-        error = RedditAPIException()
+        # Simulate locked error - RedditAPIException needs items list
+        error = RedditAPIException(items=[{
+            'error_type': 'THREAD_LOCKED',
+            'message': 'This thread has been locked'
+        }])
         error.error_type = "THREAD_LOCKED"
         mock_submission.reply = AsyncMock(side_effect=error)
 
@@ -487,8 +492,11 @@ class TestReply:
         mock_submission = AsyncMock()
         mock_reddit.submission = AsyncMock(return_value=mock_submission)
 
-        # Simulate deleted error
-        error = RedditAPIException()
+        # Simulate deleted error - RedditAPIException needs items list
+        error = RedditAPIException(items=[{
+            'error_type': 'DELETED',
+            'message': 'This comment has been deleted'
+        }])
         error.error_type = "DELETED"
         mock_submission.reply = AsyncMock(side_effect=error)
 

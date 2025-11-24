@@ -265,6 +265,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         Returns:
             Response (200 if allowed, 429 if rate limited)
         """
+        # Check if rate limiting is disabled (for tests)
+        import os
+        if os.getenv("DISABLE_RATE_LIMIT", "").lower() in {"1", "true", "yes"}:
+            return await call_next(request)
+
         # Get client IP and rate limit
         client_ip = self._get_client_ip(request)
         path = request.url.path

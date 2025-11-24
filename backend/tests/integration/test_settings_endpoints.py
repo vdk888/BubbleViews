@@ -18,6 +18,12 @@ from app.models.agent_config import AgentConfig
 from app.core.security import get_password_hash, create_access_token
 from app.core.database import get_db
 
+# Import all models at module level to ensure they're registered with Base.metadata
+# This MUST happen before any test runs or creates tables
+from app.models.belief import BeliefNode, BeliefEdge, StanceVersion, EvidenceLink, BeliefUpdate  # noqa: F401
+from app.models.interaction import Interaction  # noqa: F401
+from app.models.pending_post import PendingPost  # noqa: F401
+
 
 @pytest.fixture(scope="function")
 async def db_engine():
@@ -30,20 +36,15 @@ async def db_engine():
     Yields:
         Tuple of (AsyncEngine, async_sessionmaker)
     """
-    # Import all models to ensure they're registered with Base.metadata
-    from app.models.persona import Persona  # noqa: F401
-    from app.models.user import Admin  # noqa: F401
-    from app.models.agent_config import AgentConfig  # noqa: F401
-    from app.models.belief import BeliefNode, BeliefEdge, StanceVersion, EvidenceLink, BeliefUpdate  # noqa: F401
-    from app.models.interaction import Interaction  # noqa: F401
-    from app.models.pending_post import PendingPost  # noqa: F401
+    # All models are imported at module level, so Base.metadata already knows about them
 
-    # Use file::memory:?cache=shared to create a shared in-memory database
-    # that persists across connections within the same process
+    # Use a simple in-memory database with a unique name per test
+    # This ensures isolation between tests while still being fast
     engine = create_async_engine(
-        "sqlite+aiosqlite:///file::memory:?cache=shared&uri=true",
-        connect_args={"check_same_thread": False, "uri": True},
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
         poolclass=StaticPool,
+        echo=False,
     )
 
     # Create all tables

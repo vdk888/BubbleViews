@@ -214,16 +214,16 @@ def classify_query_intent(question: str) -> str:
     """
     question_lower = question.lower()
 
-    # Belief history keywords
+    # Belief history keywords (more specific patterns)
     belief_history_keywords = [
-        "how did", "belief", "stance", "change", "evolve", "history",
+        "how did", "change", "evolve", "history",
         "confidence", "update"
     ]
 
-    # Interaction search keywords
+    # Interaction search keywords (check first - more specific)
     interaction_search_keywords = [
         "show", "find", "posts about", "comments about", "said about",
-        "discussed", "mentioned"
+        "discussed", "mentioned", "posts", "comments"
     ]
 
     # Reasoning explanation keywords
@@ -232,24 +232,30 @@ def classify_query_intent(question: str) -> str:
         "how come", "why", "t1_", "t3_"  # Reddit ID patterns
     ]
 
-    # Belief analysis keywords
+    # Belief analysis keywords (check for "should" + belief context)
     analysis_keywords = [
         "should", "adjust", "recommend", "propose", "suggest",
         "analysis", "evaluate"
     ]
 
-    # Count matches for each intent
+    # Check in specific order with more specific patterns
+    # 1. Reasoning explanation (most specific - includes Reddit IDs)
     if any(kw in question_lower for kw in reasoning_keywords):
         return GovernorQueryIntent.REASONING_EXPLANATION
 
-    if any(kw in question_lower for kw in belief_history_keywords):
-        return GovernorQueryIntent.BELIEF_HISTORY
-
+    # 2. Interaction search (look for posts/comments/show/find)
     if any(kw in question_lower for kw in interaction_search_keywords):
         return GovernorQueryIntent.INTERACTION_SEARCH
 
+    # 3. Belief analysis (should/recommend/adjust/evaluate)
     if any(kw in question_lower for kw in analysis_keywords):
-        return GovernorQueryIntent.BELIEF_ANALYSIS
+        # Check if it's also about belief context
+        if "belief" in question_lower or "stance" in question_lower or "position" in question_lower:
+            return GovernorQueryIntent.BELIEF_ANALYSIS
+
+    # 4. Belief history (how did X change/evolve)
+    if any(kw in question_lower for kw in belief_history_keywords):
+        return GovernorQueryIntent.BELIEF_HISTORY
 
     return GovernorQueryIntent.GENERAL
 

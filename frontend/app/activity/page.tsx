@@ -57,124 +57,97 @@ export default function ActivityPage() {
 
   if (!selectedPersonaId) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-          <p className="text-yellow-800 dark:text-yellow-200">
-            Please select a persona to view activity
-          </p>
+      <div className="page-shell">
+        <div className="card p-4 bg-[var(--card)]">
+          <p className="muted">Selectionnez une persona pour consulter l'activite.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="page-shell">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-2">
-          Activity Feed
-        </h1>
-        <p className="text-zinc-600 dark:text-zinc-400">
-          Recent Reddit interactions by the agent
+        <h1>Activity Feed</h1>
+        <p className="muted max-w-2xl">
+          Flux en direct des interactions Reddit realisees par l'agent Bubble.
         </p>
       </div>
 
-      {/* Controls */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <label className="text-sm text-zinc-600 dark:text-zinc-400">
-            Show:
-          </label>
+      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <label className="text-sm text-[var(--text-secondary)]">Afficher</label>
           <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
-            className="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-md text-sm bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
+            className="px-3 py-2 border border-[var(--border)] rounded-md text-sm bg-white shadow-sm"
           >
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
+            {[10, 20, 50, 100].map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
           </select>
-          <span className="text-sm text-zinc-600 dark:text-zinc-400">
-            interactions
-          </span>
+          <span className="text-sm text-[var(--text-secondary)]">interactions</span>
         </div>
         <button
           onClick={loadActivity}
           disabled={loading}
-          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+          className="pill-button text-sm disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {loading ? "Loading..." : "Refresh"}
+          {loading ? "Chargement..." : "Rafraichir"}
         </button>
       </div>
 
-      {/* Error State */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
-          <p className="text-red-800 dark:text-red-200">{error}</p>
+        <div className="border border-red-200 bg-red-50 rounded-lg p-4 mb-6">
+          <p className="text-red-800">{error}</p>
         </div>
       )}
 
-      {/* Loading State */}
       {loading && (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="bg-white dark:bg-zinc-800 rounded-lg shadow p-6 border border-zinc-200 dark:border-zinc-700 animate-pulse"
-            >
-              <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-1/4 mb-2"></div>
-              <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-3/4 mb-2"></div>
-              <div className="h-4 bg-zinc-200 dark:bg-zinc-700 rounded w-1/2"></div>
+            <div key={i} className="card p-6 animate-pulse">
+              <div className="h-4 bg-[var(--card)] rounded w-1/4 mb-2"></div>
+              <div className="h-4 bg-[var(--card)] rounded w-3/4 mb-2"></div>
+              <div className="h-4 bg-[var(--card)] rounded w-1/2"></div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Activity List */}
       {!loading && activities.length === 0 && (
-        <div className="bg-white dark:bg-zinc-800 rounded-lg shadow p-8 border border-zinc-200 dark:border-zinc-700 text-center">
-          <p className="text-zinc-500 dark:text-zinc-400">
-            No activity yet. The agent has not posted anything.
-          </p>
+        <div className="card p-8 text-center">
+          <p className="muted">Aucune interaction encore. L agent n a pas encore publie.</p>
         </div>
       )}
 
       {!loading && activities.length > 0 && (
         <div className="space-y-4">
           {activities.map((item) => (
-            <div
-              key={item.id}
-              className="bg-white dark:bg-zinc-800 rounded-lg shadow p-6 border border-zinc-200 dark:border-zinc-700"
-            >
+            <div key={item.id} className="card p-6">
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                    {item.interaction_type}
-                  </span>
-                  <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                    r/{item.subreddit}
-                  </span>
+                  <span className="chip text-xs capitalize">{item.interaction_type}</span>
+                  <span className="text-sm text-[var(--text-secondary)]">r/{item.subreddit}</span>
                 </div>
-                <span className="text-sm text-zinc-500 dark:text-zinc-500">
-                  {formatDate(item.created_at)}
-                </span>
+                <span className="text-sm text-[var(--text-secondary)]">{formatDate(item.created_at)}</span>
               </div>
 
-              <p className="text-zinc-900 dark:text-white mb-3">
-                {truncate(item.content, 300)}
-              </p>
+              <p className="text-[var(--primary)] mb-3">{truncate(item.content, 300)}</p>
 
               <div className="flex items-center gap-4">
                 <a
                   href={getRedditUrl(item)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                  className="text-sm font-semibold hover:underline"
                 >
-                  View on Reddit →
+                  Voir sur Reddit ->
                 </a>
                 {item.metadata.karma !== undefined && (
-                  <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                  <span className="text-sm text-[var(--text-secondary)]">
                     {String(item.metadata.karma)} karma
                   </span>
                 )}
@@ -184,10 +157,9 @@ export default function ActivityPage() {
         </div>
       )}
 
-      {/* Pagination hint */}
       {!loading && activities.length > 0 && (
-        <div className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-          Showing {activities.length} most recent interactions
+        <div className="mt-6 text-center text-sm muted">
+          Affichage des {activities.length} interactions les plus recentes.
         </div>
       )}
     </div>

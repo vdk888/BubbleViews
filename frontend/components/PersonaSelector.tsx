@@ -39,7 +39,7 @@ export function PersonaSelector() {
   }
 
   if (personas.length === 0) {
-    return <div className="text-sm muted">Aucune persona trouvée</div>;
+    return <div className="text-sm muted">Aucune persona trouvee</div>;
   }
 
   return (

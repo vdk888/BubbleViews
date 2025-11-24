@@ -28,6 +28,7 @@ os.environ["SECRET_KEY"] = "test_secret_key_at_least_32_characters_long_for_jwt"
 os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "60"
 os.environ["TARGET_SUBREDDITS"] = '["test", "bottest"]'
 os.environ["AUTO_POSTING_ENABLED"] = "false"
+os.environ["DISABLE_RATE_LIMIT"] = "true"  # Disable rate limiting for tests
 
 # Add backend directory to path
 backend_dir = Path(__file__).parent.parent
