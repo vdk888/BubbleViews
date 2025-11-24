@@ -15,6 +15,22 @@ sys.modules['asyncpraw'] = MagicMock()
 sys.modules['asyncpraw.exceptions'] = MagicMock()
 sys.modules['asyncpraw.models'] = MagicMock()
 
+# Create mock exception class that inherits from BaseException properly
+class RedditErrorItem:
+    """Mock RedditErrorItem for testing."""
+    def __init__(self, error_type="UNKNOWN"):
+        self.error_type = error_type
+
+class RedditAPIException(Exception):
+    """Mock RedditAPIException for testing."""
+    def __init__(self, message="Reddit API Error", error_type=None):
+        self.error_type = error_type
+        self.items = [RedditErrorItem(error_type)] if error_type else []
+        super().__init__(message)
+
+sys.modules['asyncpraw'].exceptions.RedditAPIException = RedditAPIException
+sys.modules['asyncpraw.exceptions'].RedditAPIException = RedditAPIException
+
 from app.services.memory_store import SQLiteMemoryStore
 from app.services.reddit_client import AsyncPRAWClient
 from app.services.llm_client import OpenRouterClient
@@ -127,25 +143,29 @@ class TestRedditClientIntegration:
         mock_submission.url = "https://reddit.com/r/test/test123"
         mock_submission.subreddit.display_name = "test"
 
-        mock_subreddit.new = AsyncMock(return_value=[mock_submission])
+        # Create async generator for subreddit.new
+        async def mock_new_generator(limit):
+            yield mock_submission
+
+        mock_subreddit.new = MagicMock(return_value=mock_new_generator(1))
         mock_reddit.subreddit = AsyncMock(return_value=mock_subreddit)
 
-        with patch('asyncpraw.Reddit', return_value=mock_reddit):
-            from app.core.config import settings
-            client = AsyncPRAWClient(
-                client_id=settings.REDDIT_CLIENT_ID,
-                client_secret=settings.REDDIT_CLIENT_SECRET,
-                user_agent=settings.REDDIT_USER_AGENT,
-                username=settings.REDDIT_USERNAME,
-                password=settings.REDDIT_PASSWORD
-            )
+        # Create client and directly assign the mocked reddit instance
+        client = AsyncPRAWClient(
+            client_id="test_client_id",
+            client_secret="test_secret",
+            user_agent="test_agent",
+            username="test_user",
+            password="test_pass"
+        )
+        client.reddit = mock_reddit
 
-            # Fetch posts
-            posts = await client.get_new_posts(["test"], limit=1)
+        # Fetch posts
+        posts = await client.get_new_posts(["test"], limit=1)
 
-            assert len(posts) == 1
-            assert posts[0]["id"] == "test123"
-            assert posts[0]["title"] == "Test Post"
+        assert len(posts) == 1
+        assert posts[0]["id"] == "test123"
+        assert posts[0]["title"] == "Test Post"
 
 
 class TestLLMClientIntegration:
@@ -154,7 +174,7 @@ class TestLLMClientIntegration:
     @pytest.mark.anyio
     async def test_generate_response_with_cost_tracking(self):
         """Test response generation with cost tracking."""
-        # Mock OpenAI client
+        # Mock OpenAI completion response
         mock_completion = MagicMock()
         mock_completion.choices = [
             MagicMock(
@@ -168,34 +188,26 @@ class TestLLMClientIntegration:
             completion_tokens=50,
             total_tokens=150
         )
-        mock_completion.model = "openai/gpt-3.5-turbo"
+        mock_completion.model = "openai/gpt-4o-mini"
 
-        mock_client = AsyncMock()
-        mock_client.chat.completions.create = AsyncMock(
+        # Create LLM client and patch its client.chat.completions.create
+        llm_client = OpenRouterClient()
+        llm_client.client.chat.completions.create = AsyncMock(
             return_value=mock_completion
         )
 
-        with patch('openai.AsyncOpenAI', return_value=mock_client):
-            from app.core.config import settings
-            llm_client = OpenRouterClient(
-                api_key=settings.OPENROUTER_API_KEY,
-                base_url=settings.OPENROUTER_BASE_URL,
-                primary_model="openai/gpt-3.5-turbo",
-                secondary_model="anthropic/claude-3-haiku"
-            )
+        result = await llm_client.generate_response(
+            system_prompt="You are a helpful assistant",
+            context={"topic": "testing"},
+            user_message="Write a test response"
+        )
 
-            result = await llm_client.generate_response(
-                system_prompt="You are a helpful assistant",
-                context={"topic": "testing"},
-                user_message="Write a test response"
-            )
-
-            assert "response" in result
-            assert result["response"] == "This is a test response."
-            assert "tokens" in result
-            assert result["tokens"]["total"] == 150
-            assert "cost" in result
-            assert result["cost"] > 0
+        assert "text" in result
+        assert result["text"] == "This is a test response."
+        assert "total_tokens" in result
+        assert result["total_tokens"] == 150
+        assert "cost" in result
+        assert result["cost"] > 0
 
 
 class TestModerationServiceIntegration:

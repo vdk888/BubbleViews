@@ -73,8 +73,11 @@ class TestRateLimitMiddleware:
     """Integration tests for rate limiting middleware."""
 
     @pytest.fixture
-    def app_with_rate_limit(self):
+    def app_with_rate_limit(self, monkeypatch):
         """Create test app with rate limiting."""
+        # Enable rate limiting for these tests (overriding conftest)
+        monkeypatch.delenv("DISABLE_RATE_LIMIT", raising=False)
+        
         app = FastAPI()
 
         # Add rate limiting middleware
@@ -223,8 +226,11 @@ class TestRateLimitMiddleware:
 class TestRateLimitConfiguration:
     """Test rate limit configuration and customization."""
 
-    def test_custom_rate_limits(self):
+    def test_custom_rate_limits(self, monkeypatch):
         """Test custom rate limit configuration."""
+        # Enable rate limiting for this test
+        monkeypatch.delenv("DISABLE_RATE_LIMIT", raising=False)
+        
         app = FastAPI()
         app.add_middleware(
             RateLimitMiddleware,

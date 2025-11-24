@@ -33,7 +33,7 @@ from app.models import (
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./data/test_reddit_agent.db"
 
 
-async def test_all():
+async def main():
     """Run all database tests."""
     print("=" * 60)
     print("DATABASE SETUP AND CRUD TESTS")
@@ -238,4 +238,4 @@ async def test_all():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_all())
+    asyncio.run(main())

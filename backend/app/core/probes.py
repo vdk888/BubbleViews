@@ -42,13 +42,15 @@ async def check_database(timeout_seconds: float = 2.0) -> bool:
         ...     raise Exception("Database unavailable")
     """
     try:
-        # Run the database query with timeout
-        async with asyncio.timeout(timeout_seconds):
-            async with async_session_maker() as session:
-                # Execute simple query to verify connectivity
-                result = await session.execute(text("SELECT 1"))
-                result.scalar()
-                return True
+        # Run the database query with timeout (Python 3.10 compatible)
+        async with async_session_maker() as session:
+            # Execute simple query to verify connectivity
+            result = await asyncio.wait_for(
+                session.execute(text("SELECT 1")),
+                timeout=timeout_seconds
+            )
+            result.scalar()
+            return True
 
     except asyncio.TimeoutError:
         # Timeout waiting for database

@@ -395,11 +395,11 @@ class TestSubmitPost:
         mock_subreddit = AsyncMock()
         mock_reddit.subreddit = AsyncMock(return_value=mock_subreddit)
 
-        # Simulate ban error - RedditAPIException expects tuples (error_type, message, field)
+        # Simulate ban error - RedditAPIException expects list of (error_type, message, field) tuples
+        # The error_type property will be computed from the first item
         error = RedditAPIException(items=[
             ('SUBREDDIT_NOTALLOWED', 'You are banned from this subreddit', '')
         ])
-        error.error_type = "SUBREDDIT_NOTALLOWED"
         mock_subreddit.submit = AsyncMock(side_effect=error)
 
         with pytest.raises(PermissionError, match="Cannot post"):
@@ -475,12 +475,10 @@ class TestReply:
         mock_submission = AsyncMock()
         mock_reddit.submission = AsyncMock(return_value=mock_submission)
 
-        # Simulate locked error - RedditAPIException needs items list
-        error = RedditAPIException(items=[{
-            'error_type': 'THREAD_LOCKED',
-            'message': 'This thread has been locked'
-        }])
-        error.error_type = "THREAD_LOCKED"
+        # Simulate locked error - RedditAPIException expects list of (error_type, message, field) tuples
+        error = RedditAPIException(items=[
+            ('THREAD_LOCKED', 'This thread has been locked', '')
+        ])
         mock_submission.reply = AsyncMock(side_effect=error)
 
         with pytest.raises(PermissionError, match="thread is locked"):
@@ -492,12 +490,10 @@ class TestReply:
         mock_submission = AsyncMock()
         mock_reddit.submission = AsyncMock(return_value=mock_submission)
 
-        # Simulate deleted error - RedditAPIException needs items list
-        error = RedditAPIException(items=[{
-            'error_type': 'DELETED',
-            'message': 'This comment has been deleted'
-        }])
-        error.error_type = "DELETED"
+        # Simulate deleted error - RedditAPIException expects list of (error_type, message, field) tuples
+        error = RedditAPIException(items=[
+            ('DELETED_COMMENT', 'This comment has been deleted', '')
+        ])
         mock_submission.reply = AsyncMock(side_effect=error)
 
         with pytest.raises(PermissionError, match="deleted or removed"):

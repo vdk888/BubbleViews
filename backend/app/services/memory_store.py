@@ -80,6 +80,22 @@ class SQLiteMemoryStore(IMemoryStore):
         else:
             return self.session_maker()
 
+    def _begin_transaction(self, session):
+        """Begin transaction if using session_maker, else no-op for provided session."""
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def transaction_context():
+            if self.provided_session is not None:
+                # Don't start a new transaction for provided session
+                yield
+            else:
+                # Start transaction for session_maker sessions
+                async with session.begin():
+                    yield
+
+        return transaction_context()
+
     async def query_belief_graph(
         self,
         persona_id: str,
@@ -95,7 +111,7 @@ class SQLiteMemoryStore(IMemoryStore):
         if min_confidence is not None and not (0.0 <= min_confidence <= 1.0):
             raise ValueError(f"min_confidence must be between 0.0 and 1.0, got {min_confidence}")
 
-        async with self.session_maker() as session:
+        async with self._get_session() as session:
             # Build query for belief nodes
             stmt = select(BeliefNode).where(BeliefNode.persona_id == persona_id)
 
@@ -184,8 +200,8 @@ class SQLiteMemoryStore(IMemoryStore):
         if not (0.0 <= confidence <= 1.0):
             raise ValueError(f"confidence must be between 0.0 and 1.0, got {confidence}")
 
-        async with self.session_maker() as session:
-            async with session.begin():
+        async with self._get_session() as session:
+            async with self._begin_transaction(session):
                 # Fetch belief with current stance
                 stmt = (
                     select(BeliefNode)
@@ -264,7 +280,10 @@ class SQLiteMemoryStore(IMemoryStore):
                 )
                 session.add(update_log)
 
-                await session.commit()
+                if self.provided_session is None:
+                    await session.commit()
+                else:
+                    await session.flush()
 
                 return new_stance.id
 
@@ -292,8 +311,8 @@ class SQLiteMemoryStore(IMemoryStore):
                 f"Invalid strength: {strength}. Must be one of {VALID_EVIDENCE_STRENGTHS}"
             )
 
-        async with self.session_maker() as session:
-            async with session.begin():
+        async with self._get_session() as session:
+            async with self._begin_transaction(session):
                 # Verify belief exists and belongs to persona
                 stmt = select(BeliefNode).where(
                     and_(
@@ -321,7 +340,10 @@ class SQLiteMemoryStore(IMemoryStore):
                 belief.updated_at = datetime.utcnow()
                 session.add(belief)
 
-                await session.commit()
+                if self.provided_session is None:
+                    await session.commit()
+                else:
+                    await session.flush()
 
                 return evidence.id
 
@@ -350,8 +372,8 @@ class SQLiteMemoryStore(IMemoryStore):
         if "subreddit" not in metadata:
             raise ValueError("metadata must contain 'subreddit'")
 
-        async with self.session_maker() as session:
-            async with session.begin():
+        async with self._get_session() as session:
+            async with self._begin_transaction(session):
                 # Verify persona exists
                 stmt = select(Persona).where(Persona.id == persona_id)
                 result = await session.execute(stmt)
@@ -379,7 +401,10 @@ class SQLiteMemoryStore(IMemoryStore):
                 interaction.set_metadata(metadata)
 
                 session.add(interaction)
-                await session.commit()
+                if self.provided_session is None:
+                    await session.commit()
+                else:
+                    await session.flush()
                 interaction_id = interaction.id
 
         # Generate embedding and persist to FAISS outside transaction
@@ -405,7 +430,7 @@ class SQLiteMemoryStore(IMemoryStore):
 
         Implements IMemoryStore.add_interaction_embedding.
         """
-        async with self.session_maker() as session:
+        async with self._get_session() as session:
             # Fetch interaction
             stmt = select(Interaction).where(
                 and_(
@@ -465,7 +490,7 @@ class SQLiteMemoryStore(IMemoryStore):
         # Fetch interactions from database
         interaction_ids = [int_id for int_id, _ in search_results]
 
-        async with self.session_maker() as session:
+        async with self._get_session() as session:
             stmt = select(Interaction).where(
                 and_(
                     Interaction.id.in_(interaction_ids),
@@ -528,7 +553,7 @@ class SQLiteMemoryStore(IMemoryStore):
 
         Implements IMemoryStore.rebuild_faiss_index.
         """
-        async with self.session_maker() as session:
+        async with self._get_session() as session:
             # Verify persona exists
             stmt = select(Persona).where(Persona.id == persona_id)
             result = await session.execute(stmt)
@@ -571,7 +596,11 @@ class SQLiteMemoryStore(IMemoryStore):
 
         Implements IMemoryStore.get_belief_with_stances.
         """
-        async with self.session_maker() as session:
+        async with self._get_session() as session:
+            # Expire cache if using provided session to ensure we see latest data
+            if self.provided_session is not None:
+                session.expire_all()
+
             # Fetch belief with relationships
             stmt = (
                 select(BeliefNode)
@@ -708,8 +737,8 @@ class SQLiteMemoryStore(IMemoryStore):
         Raises:
             ValueError: If belief not found or no current stance exists
         """
-        async with self.session_maker() as session:
-            async with session.begin():
+        async with self._get_session() as session:
+            async with self._begin_transaction(session):
                 # Fetch belief with stances
                 stmt = (
                     select(BeliefNode)
@@ -755,7 +784,8 @@ class SQLiteMemoryStore(IMemoryStore):
                 )
                 session.add(update_log)
 
-                await session.commit()
+                if self.provided_session is None:
+                    await session.commit()
 
     async def unlock_stance(
         self,
@@ -776,8 +806,8 @@ class SQLiteMemoryStore(IMemoryStore):
         Raises:
             ValueError: If belief not found or no locked stance exists
         """
-        async with self.session_maker() as session:
-            async with session.begin():
+        async with self._get_session() as session:
+            async with self._begin_transaction(session):
                 # Fetch belief with stances
                 stmt = (
                     select(BeliefNode)
@@ -823,7 +853,8 @@ class SQLiteMemoryStore(IMemoryStore):
                 )
                 session.add(update_log)
 
-                await session.commit()
+                if self.provided_session is None:
+                    await session.commit()
 
     async def get_interactions_with_cost(
         self,
@@ -840,7 +871,7 @@ class SQLiteMemoryStore(IMemoryStore):
         Returns:
             List of Interaction objects with cost metadata
         """
-        async with self.session_maker() as session:
+        async with self._get_session() as session:
             # Build query for interactions
             stmt = select(Interaction).where(Interaction.persona_id == persona_id)
 

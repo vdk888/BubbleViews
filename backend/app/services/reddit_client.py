@@ -265,9 +265,10 @@ class AsyncPRAWClient(IRedditClient):
 
         except RedditAPIException as e:
             # Transform Reddit API errors to appropriate exceptions
-            error_type = e.error_type if hasattr(e, 'error_type') else str(e)
+            # Get error_type from the first item (RedditErrorItem)
+            error_type = e.items[0].error_type if e.items else str(e)
 
-            if any(term in error_type.lower() for term in ['banned', 'restricted', 'forbidden']):
+            if any(term in error_type.lower() for term in ['banned', 'restricted', 'forbidden', 'notallowed']):
                 raise PermissionError(
                     f"Cannot post to r/{subreddit}: {error_type}"
                 ) from e
@@ -329,7 +330,8 @@ class AsyncPRAWClient(IRedditClient):
             return reddit_id
 
         except RedditAPIException as e:
-            error_type = e.error_type if hasattr(e, 'error_type') else str(e)
+            # Get error_type from the first item (RedditErrorItem)
+            error_type = e.items[0].error_type if e.items else str(e)
 
             if any(term in error_type.lower() for term in ['locked', 'archived']):
                 raise PermissionError(

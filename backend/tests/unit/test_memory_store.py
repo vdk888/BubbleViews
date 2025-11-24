@@ -15,9 +15,9 @@ from app.models.interaction import Interaction
 
 
 @pytest.fixture
-async def memory_store():
+async def memory_store(async_session):
     """Create memory store instance."""
-    return SQLiteMemoryStore()
+    return SQLiteMemoryStore(async_session)
 
 
 @pytest.fixture

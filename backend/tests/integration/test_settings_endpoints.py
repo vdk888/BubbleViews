@@ -26,20 +26,17 @@ from app.models.pending_post import PendingPost  # noqa: F401
 
 
 @pytest.fixture(scope="function")
-async def db_engine():
+async def test_db_engine():
     """
-    Create an in-memory database engine and session maker for testing.
+    Create an in-memory database engine for testing.
 
-    Returns tuple of (engine, session_maker) to ensure all fixtures and the app
-    use the same in-memory database.
+    Creates engine and tables, then yields the engine and session_maker.
+    Uses function scope to ensure isolation between tests.
 
     Yields:
-        Tuple of (AsyncEngine, async_sessionmaker)
+        Tuple of (engine, session_maker)
     """
     # All models are imported at module level, so Base.metadata already knows about them
-
-    # Use a simple in-memory database with a unique name per test
-    # This ensures isolation between tests while still being fast
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -47,7 +44,7 @@ async def db_engine():
         echo=False,
     )
 
-    # Create all tables
+    # Create all tables BEFORE creating any sessions
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -62,18 +59,17 @@ async def db_engine():
 
 
 @pytest.fixture
-async def async_session(db_engine):
+async def async_session(test_db_engine):
     """
-    Create an async session from the shared engine.
+    Provide a database session for fixture use.
 
     Args:
-        db_engine: Tuple of (engine, session_maker)
+        test_db_engine: Tuple of (engine, session_maker)
 
     Yields:
         AsyncSession for testing
     """
-    engine, session_maker = db_engine
-
+    engine, session_maker = test_db_engine
     async with session_maker() as session:
         yield session
 
@@ -136,30 +132,70 @@ async def test_persona(async_session: AsyncSession):
 
 
 @pytest.fixture
-async def client(db_engine):
+async def app_with_db(test_db_engine):
+    """
+    Override database dependency in app with test database.
+
+    Args:
+        test_db_engine: Tuple of (engine, session_maker)
+
+    Yields:
+        FastAPI app with overridden dependencies
+    """
+    import app.core.database as db_module
+
+    engine, session_maker = test_db_engine
+
+    async def override_get_db():
+        # Create a NEW session for each request
+        async with session_maker() as session:
+            try:
+                yield session
+                # Explicitly commit after request completes successfully
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    async def override_get_session():
+        # Override get_session too (used by get_user in security.py)
+        async with session_maker() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    # Override FastAPI dependency
+    app.dependency_overrides[get_db] = override_get_db
+
+    # Override get_session which is used by authentication code
+    original_get_session = db_module.get_session
+    db_module.get_session = override_get_session
+
+    yield app
+
+    # Restore originals
+    app.dependency_overrides.clear()
+    db_module.get_session = original_get_session
+
+
+@pytest.fixture
+async def client(app_with_db):
     """
     Create async HTTP client with database override.
 
     Args:
-        db_engine: Tuple of (engine, session_maker)
+        app_with_db: FastAPI app with overridden dependencies
 
     Yields:
         AsyncClient for making requests
     """
     from httpx import ASGITransport
 
-    engine, session_maker = db_engine
-
-    async def override_get_db():
-        async with session_maker() as session:
-            yield session
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app_with_db), base_url="http://test") as client:
         yield client
-
-    app.dependency_overrides.clear()
 
 
 class TestGetSettings:
@@ -614,6 +650,26 @@ class TestListPersonas:
         assert "Bot3" in usernames
 
 
+@pytest.fixture
+async def persona1(async_session: AsyncSession):
+    """Create first test persona for isolation testing."""
+    persona = Persona(reddit_username="Bot1", display_name="Bot 1", config="{}")
+    async_session.add(persona)
+    await async_session.commit()
+    await async_session.refresh(persona)
+    return persona
+
+
+@pytest.fixture
+async def persona2(async_session: AsyncSession):
+    """Create second test persona for isolation testing."""
+    persona = Persona(reddit_username="Bot2", display_name="Bot 2", config="{}")
+    async_session.add(persona)
+    await async_session.commit()
+    await async_session.refresh(persona)
+    return persona
+
+
 class TestPersonaIsolation:
     """Test suite for persona isolation enforcement."""
 
@@ -621,7 +677,8 @@ class TestPersonaIsolation:
         self,
         client: AsyncClient,
         auth_token: str,
-        async_session: AsyncSession
+        persona1: Persona,
+        persona2: Persona
     ):
         """
         Test that configs are properly isolated between personas.
@@ -630,14 +687,8 @@ class TestPersonaIsolation:
         Act: Retrieve config for each
         Assert: Each gets only their own config
         """
-        # Arrange
-        persona1 = Persona(reddit_username="Bot1", display_name="Bot 1", config="{}")
-        persona2 = Persona(reddit_username="Bot2", display_name="Bot 2", config="{}")
-        async_session.add_all([persona1, persona2])
-        await async_session.commit()
-
-        # Set different configs for each
-        await client.post(
+        # Set different configs for each persona
+        response_post1 = await client.post(
             "/api/v1/settings",
             json={
                 "persona_id": persona1.id,
@@ -646,8 +697,9 @@ class TestPersonaIsolation:
             },
             headers={"Authorization": f"Bearer {auth_token}"}
         )
+        assert response_post1.status_code == 200
 
-        await client.post(
+        response_post2 = await client.post(
             "/api/v1/settings",
             json={
                 "persona_id": persona2.id,
@@ -656,8 +708,9 @@ class TestPersonaIsolation:
             },
             headers={"Authorization": f"Bearer {auth_token}"}
         )
+        assert response_post2.status_code == 200
 
-        # Act
+        # Act - retrieve config for each persona
         response1 = await client.get(
             "/api/v1/settings",
             params={"persona_id": persona1.id},
@@ -669,6 +722,8 @@ class TestPersonaIsolation:
             headers={"Authorization": f"Bearer {auth_token}"}
         )
 
-        # Assert
+        # Assert - each persona has only their own config
+        assert response1.status_code == 200
+        assert response2.status_code == 200
         assert response1.json()["config"]["shared_key"] == "persona1_value"
         assert response2.json()["config"]["shared_key"] == "persona2_value"

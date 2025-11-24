@@ -8,10 +8,17 @@ export function PersonaSelector() {
   const [personas, setPersonas] = useState<PersonaSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { selectedPersonaId, selectPersona } = usePersona();
 
   useEffect(() => {
-    loadPersonas();
+    const token = localStorage.getItem('auth_token');
+    setIsAuthenticated(!!token);
+    if (token) {
+      loadPersonas();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   const loadPersonas = async () => {
@@ -29,6 +36,10 @@ export function PersonaSelector() {
       setLoading(false);
     }
   };
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   if (loading) {
     return <div className="text-sm muted">Chargement...</div>;

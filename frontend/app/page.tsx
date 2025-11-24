@@ -2,12 +2,14 @@
 
 import { StatsSummary } from "@/components/StatsSummary";
 import { usePersona } from "@/hooks/usePersona";
+import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
 export default function Home() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { selectedPersonaId, isLoading } = usePersona();
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="page-shell">
         <div className="animate-pulse">
@@ -16,6 +18,10 @@ export default function Home() {
         </div>
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return null;
   }
 
   return (
