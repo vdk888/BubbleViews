@@ -6,6 +6,17 @@
 - **Deployment**: Single DigitalOcean droplet (simplified, no Docker for MVP)
 - **Cost**: ~$6.25/month total (vs $50+ for PostgreSQL + premium LLMs)
 
+## Quality & Spec Alignment Updates (per 0_dev + ideation docs)
+- Keep SQLite for the MVP, but **design contracts and schemas to upgrade to PostgreSQL** with minimal changes (foreign keys, WAL, forward-only migrations).
+- **Multi-persona readiness**: all data keyed by `persona_id`; config supports multiple Reddit accounts/personas later.
+- **Belief graph**: first-class nodes/edges + stance versions + evidence log; supports supports/contradicts/depends edges and Bayesian-style confidence updates.
+- **Dashboard scope**: activity timeline + karma stats, moderation console (pending/auto toggle), belief graph visualization, stance history, persona controls (sliders/lock/nudge), governor chat hook.
+- **Moderation**: explicit review queue UX, auto/manual mode flag, flagged-content overrides.
+- **Memory**: embed and index past Reddit actions; retrieval of self-history + stance evolution for consistency.
+- **Deployment**: dashboard deployable to Vercel; always-on agent loop on DO (or similar). Comparison kept for Netlify/DO for future.
+- **API surface**: endpoints for belief history, graph data, moderation actions, analytics; optional SSE/WebSocket for live updates.
+- **Observability/quality**: structured logs with correlation IDs, cost/error metrics, basic runbooks, contract/unit tests and migration discipline even on SQLite.
+
 ---
 
 ## Phase 0: Indestructible Foundations (Week 1)
@@ -214,7 +225,7 @@ settings = Settings()
 
 Create `.env.example`:
 ```env
-# Database
+# Database (SQLite for MVP; Postgres-ready URL format)
 DATABASE_URL=sqlite+aiosqlite:///./data/reddit_agent.db
 
 # Reddit API (from config.json)
@@ -247,87 +258,133 @@ Document secret rotation policy in `docs/runbooks/secrets.md`
 
 ### Day 4: Database & Migrations
 
-**SQLite Schema** (uses JSON1 extension for JSON support):
+**SQLite Schema** (uses JSON1; PostgreSQL-compatible shapes for upgrade):
 
 ```sql
--- Enable JSON1 extension (built-in since SQLite 3.38)
--- Beliefs table with JSON support
-CREATE TABLE beliefs (
-    id TEXT PRIMARY KEY,               -- UUID as text
-    belief_data TEXT NOT NULL,         -- JSON string
-    confidence REAL CHECK (confidence >= 0 AND confidence <= 1),
-    tags TEXT,                         -- Comma-separated or JSON array
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+-- Personas (multi-account ready)
+CREATE TABLE personas (
+    id TEXT PRIMARY KEY,
+    reddit_username TEXT NOT NULL,
+    display_name TEXT,
+    config JSON NOT NULL, -- JSON: target_subreddits, style sliders, safety flags
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    CHECK (json_valid(belief_data))    -- Validate JSON
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    CHECK (json_valid(config))
+);
+CREATE UNIQUE INDEX idx_persona_username ON personas(reddit_username);
+
+-- Belief graph: nodes and edges with stance versions and evidence
+CREATE TABLE belief_nodes (
+    id TEXT PRIMARY KEY,
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    current_confidence REAL CHECK (current_confidence BETWEEN 0 AND 1),
+    tags JSON, -- JSON array
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    CHECK (json_valid(tags))
+);
+CREATE INDEX idx_belief_nodes_persona ON belief_nodes(persona_id);
+CREATE INDEX idx_belief_nodes_confidence ON belief_nodes(current_confidence);
+
+CREATE TABLE belief_edges (
+    id TEXT PRIMARY KEY,
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL REFERENCES belief_nodes(id) ON DELETE CASCADE,
+    target_id TEXT NOT NULL REFERENCES belief_nodes(id) ON DELETE CASCADE,
+    relation TEXT NOT NULL, -- supports | contradicts | depends_on | evidence_for
+    weight REAL DEFAULT 0.5,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_belief_edges_persona ON belief_edges(persona_id);
+CREATE INDEX idx_belief_edges_relation ON belief_edges(relation);
+
+CREATE TABLE stance_versions (
+    id TEXT PRIMARY KEY,
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+    belief_id TEXT NOT NULL REFERENCES belief_nodes(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    confidence REAL CHECK (confidence BETWEEN 0 AND 1),
+    status TEXT DEFAULT 'current', -- current | deprecated | locked
+    rationale TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_stance_versions_status ON stance_versions(status);
+
+CREATE TABLE evidence_links (
+    id TEXT PRIMARY KEY,
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+    belief_id TEXT NOT NULL REFERENCES belief_nodes(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL, -- reddit_comment | external_link | note
+    source_ref TEXT NOT NULL,  -- e.g., reddit_id or URL
+    strength TEXT,             -- weak | moderate | strong
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_beliefs_confidence ON beliefs(confidence);
-CREATE INDEX idx_beliefs_updated ON beliefs(updated_at DESC);
-
--- Query examples:
--- SELECT * FROM beliefs WHERE json_extract(belief_data, '$.text') LIKE '%climate%';
--- SELECT * FROM beliefs WHERE json_extract(belief_data, '$.confidence') > 0.8;
-
--- Interactions table
+-- Interactions (episodic memory)
 CREATE TABLE interactions (
     id TEXT PRIMARY KEY,
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
-    interaction_type TEXT NOT NULL,    -- 'post', 'comment', 'reply'
+    interaction_type TEXT NOT NULL,    -- post | comment | reply
     reddit_id TEXT UNIQUE NOT NULL,
     subreddit TEXT NOT NULL,
-    metadata TEXT,                     -- JSON string
+    parent_id TEXT,
+    metadata JSON,
+    embedding BLOB, -- stored separately in FAISS; keep optional blob for portability
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     CHECK (json_valid(metadata))
 );
-
+CREATE INDEX idx_interactions_persona ON interactions(persona_id);
 CREATE INDEX idx_interactions_subreddit ON interactions(subreddit);
 CREATE INDEX idx_interactions_created ON interactions(created_at DESC);
-CREATE INDEX idx_interactions_reddit_id ON interactions(reddit_id);
 
 -- Belief updates audit log
 CREATE TABLE belief_updates (
     id TEXT PRIMARY KEY,
-    belief_id TEXT,
-    old_value TEXT,                    -- JSON
-    new_value TEXT,                    -- JSON
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+    belief_id TEXT NOT NULL REFERENCES belief_nodes(id) ON DELETE CASCADE,
+    old_value JSON,
+    new_value JSON,
     reason TEXT NOT NULL,
-    trigger_type TEXT,                 -- 'manual', 'evidence', 'conflict'
+    trigger_type TEXT,                 -- manual | evidence | conflict | governor
     updated_by TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (belief_id) REFERENCES beliefs(id) ON DELETE CASCADE,
     CHECK (json_valid(old_value)),
     CHECK (json_valid(new_value))
 );
-
 CREATE INDEX idx_belief_updates_belief ON belief_updates(belief_id);
 CREATE INDEX idx_belief_updates_created ON belief_updates(created_at DESC);
 
 -- Moderation queue
 CREATE TABLE pending_posts (
     id TEXT PRIMARY KEY,
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     post_type TEXT,
     target_subreddit TEXT,
     parent_id TEXT,
-    draft_metadata TEXT,               -- JSON
-    status TEXT DEFAULT 'pending',     -- 'pending', 'approved', 'rejected'
+    draft_metadata JSON,
+    status TEXT DEFAULT 'pending',     -- pending | approved | rejected
     reviewed_by TEXT,
     reviewed_at TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     CHECK (json_valid(draft_metadata))
 );
-
 CREATE INDEX idx_pending_posts_status ON pending_posts(status);
 CREATE INDEX idx_pending_posts_created ON pending_posts(created_at DESC);
 
--- Agent config (key-value store)
+-- Agent config (per persona, key-value)
 CREATE TABLE agent_config (
     id TEXT PRIMARY KEY,
-    config_key TEXT UNIQUE NOT NULL,
-    config_value TEXT NOT NULL,        -- JSON
+    persona_id TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+    config_key TEXT NOT NULL,
+    config_value JSON NOT NULL,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    CHECK (json_valid(config_value))
+    CHECK (json_valid(config_value)),
+    UNIQUE (persona_id, config_key)
 );
 
 -- Enable WAL mode for better concurrency (single writer, multiple readers)
@@ -576,11 +633,11 @@ if __name__ == "__main__":
 ### Week 3: Core Agent Services
 
 **Service 3: Memory Store** (Days 1-2)
-- Implement `IMemoryStore` interface (ABC)
-- Methods: `query_beliefs()`, `update_belief()`, `log_interaction()`, `search_history()`
-- SQLite backend with JSON queries via `json_extract()`
-- FAISS index for semantic search (load/save to `data/faiss_index.bin`)
-- Contract tests: CRUD maintains ACID properties
+- Implement `IMemoryStore` interface (ABC) with persona-scoped data
+- Methods: `query_belief_graph()`, `update_stance_version()`, `log_interaction()`, `search_history()`, `append_evidence()`
+- SQLite backend with JSON queries via `json_extract()`, edges + nodes tables
+- FAISS index for semantic search (load/save to `data/faiss_index.bin`) of past interactions for self-consistency recall
+- Contract tests: CRUD maintains ACID properties; belief graph round-trip (nodes/edges/stances) validated
 
 **Service 4: Reddit Client** (Days 3-4)
 - Implement `IRedditClient` interface
@@ -599,26 +656,26 @@ if __name__ == "__main__":
 
 **Service 6: Agent Logic** (Days 1-2)
 - Decision engine: perception → retrieval → decision
-- Context assembly from belief graph + memory
+- Context assembly from belief graph (nodes/edges + current stance) + episodic memory retrieval (similar past comments)
 - Draft response generation using GPT-4o-mini
-- Contract tests: context → valid response
+- Contract tests: context → valid response; ensures retrieved past statements included when available
 
 **Service 7: Belief Updater** (Days 3-4)
-- Bayesian confidence update logic
+- Bayesian-style confidence update logic (evidence strength mapping)
 - Consistency checker (draft vs beliefs) using Claude-3.5-Haiku
-- Audit logging to belief_updates table
-- Contract tests: deterministic confidence updates
+- Audit logging to belief_updates table (with before/after and trigger)
+- Contract tests: deterministic confidence updates; locked stance respected
 
 **Service 8: Moderation** (Day 5)
 - Content filter (can use OpenRouter for moderation too)
-- Queue management (pending_posts table)
-- Admin approval workflow
-- Contract tests: flagged content → queue (not posted)
+- Queue management (pending_posts table) with auto/manual posting flag
+- Admin approval workflow + override for flagged content
+- Contract tests: flagged content → queue (not posted); auto mode posts when enabled
 
 **Service 9: Agent Event Loop** (Days 6-7)
 - Main loop: monitor → perceive → decide → moderate → act
 - Graceful shutdown, error recovery
-- Log all actions with cost tracking
+- Log all actions with cost tracking and correlation IDs
 - Integration tests: end-to-end with test subreddit
 
 ---
@@ -630,12 +687,18 @@ if __name__ == "__main__":
 Key endpoints:
 - `GET /api/v1/activity?since={timestamp}&limit={N}` - Recent agent activity
 - `GET /api/v1/beliefs?tags={tag1,tag2}` - Retrieve belief graph
-- `PUT /api/v1/beliefs/{id}` - Update belief (confidence, text)
+- `GET /api/v1/beliefs/{id}/history` - Stance versions + evidence timeline
+- `PUT /api/v1/beliefs/{id}` - Update belief/stance (confidence, text, lock)
+- `POST /api/v1/beliefs/{id}/nudge` - Apply soft nudge to prior
+- `GET /api/v1/belief-graph` - Nodes + edges for visualization
 - `GET /api/v1/moderation/pending` - Pending moderation queue
 - `POST /api/v1/moderation/approve` - Approve post (publish to Reddit)
 - `POST /api/v1/moderation/reject` - Reject post
-- `POST /api/v1/settings` - Update agent config
-- `GET /api/v1/stats` - Token usage, costs, interaction counts
+- `POST /api/v1/moderation/flag-override` - Override automated flag
+- `POST /api/v1/settings` - Update agent/persona config (auto-post toggle, targets)
+- `GET /api/v1/stats` - Token usage, costs, interaction counts, karma stats
+- `GET /api/v1/personas` - List personas (future multi-account)
+- Optional: `GET /api/v1/stream` (SSE/WebSocket) - live activity/moderation events
 
 ### Python ABCs (contracts before implementation)
 - `IMemoryStore` - Memory operations (query, update, log)
@@ -675,12 +738,11 @@ cd frontend
 npm run dev
 ```
 
-### Production (DigitalOcean)
-- Single droplet: $6/month (1GB RAM, 25GB SSD)
-- No Docker needed for MVP (simpler debugging)
-- systemd service for agent loop
-- nginx reverse proxy for API
-- Vercel for frontend (optional, or serve via nginx)
+### Production (hybrid: Vercel + DO)
+- **Frontend**: Vercel (Next.js) for dashboard; fast deploys, CDN.
+- **Backend + Agent loop**: DigitalOcean droplet ($6/month, 1GB RAM) with systemd for the always-on agent loop and API; nginx reverse proxy.
+- **Netlify** remains an alternative for frontend; DO App Platform or a larger droplet for scale; plan documented for future PostgreSQL move.
+- No Docker for MVP; keep Procfile/systemd; add containerization plan for future (aligns with 0_dev).
 
 **Deployment steps**:
 ```bash
@@ -726,24 +788,26 @@ sudo systemctl enable reddit-agent
 ## Success Criteria
 
 ### Phase 0 (Week 1)
-- ✅ SQLite database created with JSON1 extension enabled
-- ✅ OpenRouter client successfully calls both models (GPT-4o-mini + Haiku)
-- ✅ FAISS index saves/loads correctly
-- ✅ Credentials imported from config.json to .env
-- ✅ Docker Compose stack starts (optional)
-- ✅ Database migrations apply cleanly
-- ✅ OpenAPI spec validates
-- ✅ Onboarding docs complete
+- SQLite database created with JSON1 extension enabled
+- OpenRouter client successfully calls both models (GPT-4o-mini + Haiku)
+- FAISS index saves/loads correctly
+- Credentials imported from config.json to .env
+- Docker Compose stack starts (optional)
+- Database migrations apply cleanly
+- OpenAPI spec validates
+- Onboarding docs complete
 
 ### Phase 1 (Weeks 2-4)
-- ✅ Agent posts 1 comment/day in test subreddit using GPT-4o-mini
-- ✅ Belief graph stores 10 initial beliefs in SQLite
-- ✅ Belief consistency check using Claude-3.5-Haiku
-- ✅ Dashboard displays activity feed (queries SQLite)
-- ✅ Moderation queue functional (pending_posts table)
-- ✅ 80% unit test coverage on core services
-- ✅ <200ms p95 latency for API endpoints
-- ✅ Total cost <$1/week (extremely low with mini/Haiku)
+- Agent posts 1 comment/day in test subreddit using GPT-4o-mini
+- Belief graph stores 10 initial beliefs (nodes + edges + stance versions) in SQLite
+- Belief consistency check using Claude-3.5-Haiku
+- Dashboard displays activity feed, moderation queue, and belief graph snapshot
+- Moderation queue functional (pending_posts table) with auto/manual toggle
+- Retrieval pulls relevant past self-comments for context
+- 80% unit test coverage on core services
+- <200ms p95 latency for API endpoints
+- Total cost <$1/week (extremely low with mini/Haiku)
+- Structured logging with correlation IDs + cost metrics available
 
 ---
 
@@ -769,14 +833,19 @@ sudo systemctl enable reddit-agent
    - Cache frequently used prompts
 
 5. **Belief Graph Complexity**:
-   - Start with flat list (no graph traversal needed)
-   - Add visualization in dashboard
-   - Quarterly pruning of low-confidence beliefs
+   - Start with nodes/edges + stance versions; simple relation weights
+   - Visualization in dashboard; prune low-confidence beliefs quarterly
+   - Keep interface abstracted to allow future RDF/OWL or Postgres upgrade
 
 6. **Reddit API Rate Limits**:
    - 60 requests/minute with token bucket
    - Cache subreddit data for 5 minutes
    - Prioritize replies over new posts
+
+7. **Observability & Ops**:
+   - Structured logs (JSON) with correlation IDs and cost per request
+   - Health checks and readiness probes; basic dashboard for errors/latency
+   - Runbooks for secrets rotation and rollback; avoid shipping real secrets in repos
 
 ---
 
