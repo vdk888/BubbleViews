@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import Link from "next/link";
 import { PersonaSelector } from "@/components/PersonaSelector";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 const geistMono = Geist_Mono({
@@ -15,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Reddit AI Agent - Dashboard",
-  description: "Control panel for autonomous Reddit AI agent with belief graph and memory",
+  title: "Bubble — Dashboard",
+  description: "Bubble. Dashboard aligné sur la charte graphique officielle.",
 };
 
 const navigation = [
@@ -34,47 +36,54 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-50 dark:bg-zinc-900`}
-      >
-        <div className="min-h-screen flex flex-col">
-          {/* Header */}
-          <header className="bg-white dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <body className={`${inter.variable} ${geistMono.variable} antialiased`}>
+        <div className="min-h-screen bg-[var(--background)] flex flex-col">
+          <header className="border-b border-[var(--border)] bg-white/90 backdrop-blur-sm">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-16">
-                <div className="flex items-center">
-                  <h1 className="text-xl font-semibold text-zinc-900 dark:text-white">
-                    Reddit AI Agent
-                  </h1>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 w-9 rounded-full border-2 border-black flex items-center justify-center relative">
+                      <span className="absolute h-2 w-2 rounded-full bg-black -right-2"></span>
+                    </div>
+                    <div>
+                      <p className="text-xl font-extrabold tracking-tight text-black leading-none">
+                        Bubble.
+                      </p>
+                      <p className="tagline leading-none text-sm">Transparence & IA</p>
+                    </div>
+                  </div>
+                  <nav className="hidden md:flex items-center gap-6 ml-8">
+                    {navigation.map((item) => (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        className="text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--primary)] transition-colors"
+                      >
+                        {item.name}
+                      </Link>
+                    ))}
+                  </nav>
                 </div>
-                <nav className="hidden md:flex space-x-8">
-                  {navigation.map((item) => (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white px-3 py-2 text-sm font-medium transition-colors"
-                    >
-                      {item.name}
-                    </Link>
-                  ))}
-                </nav>
-                <div className="flex items-center">
+                <div className="flex items-center gap-3">
                   <PersonaSelector />
+                  <Link
+                    href="/settings"
+                    className="soft-button text-sm hidden sm:inline-flex"
+                  >
+                    Préférences
+                  </Link>
                 </div>
               </div>
             </div>
           </header>
 
-          {/* Main content */}
-          <main className="flex-1">
-            {children}
-          </main>
+          <main className="flex-1">{children}</main>
 
-          {/* Footer */}
-          <footer className="bg-white dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-              <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
-                Reddit AI Agent MVP - Week 4 Dashboard
+          <footer className="border-t border-[var(--border)] bg-white">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+              <p className="text-center text-sm text-[var(--text-secondary)]">
+                Bubble. Dashboard — identité alignée avec la charte graphique officielle.
               </p>
             </div>
           </footer>

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.interfaces.moderation import IModerationService
 from app.models.pending_post import PendingPost
 from app.models.agent_config import AgentConfig
+from app.services.event_publisher import event_publisher
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +182,19 @@ class ModerationService(IModerationService):
         logger.info(
             f"Enqueued content for review: "
             f"item_id={pending_post.id}, persona_id={persona_id}"
+        )
+
+        # Publish event for real-time dashboard updates
+        await event_publisher.publish_pending_post_added(
+            persona_id=persona_id,
+            pending_post_data={
+                "id": pending_post.id,
+                "content": content,
+                "post_type": post_type,
+                "target_subreddit": target_subreddit,
+                "parent_id": parent_id,
+                "status": "pending"
+            }
         )
 
         return pending_post.id

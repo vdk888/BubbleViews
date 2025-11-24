@@ -31,21 +31,15 @@ export function PersonaSelector() {
   };
 
   if (loading) {
-    return (
-      <div className="text-sm text-zinc-500">Loading personas...</div>
-    );
+    return <div className="text-sm muted">Chargement...</div>;
   }
 
   if (error) {
-    return (
-      <div className="text-sm text-red-500">Error: {error}</div>
-    );
+    return <div className="text-sm text-red-600">Erreur : {error}</div>;
   }
 
   if (personas.length === 0) {
-    return (
-      <div className="text-sm text-zinc-500">No personas found</div>
-    );
+    return <div className="text-sm muted">Aucune persona trouvée</div>;
   }
 
   return (
@@ -55,7 +49,7 @@ export function PersonaSelector() {
         const persona = personas.find((p) => p.id === e.target.value);
         if (persona) selectPersona(persona);
       }}
-      className="px-3 py-2 border border-zinc-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      className="px-3 py-2 border border-[var(--border)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary)] bg-white shadow-sm"
     >
       {personas.map((persona) => (
         <option key={persona.id} value={persona.id}>

@@ -798,3 +798,38 @@ class SQLiteMemoryStore(IMemoryStore):
                 session.add(update_log)
 
                 await session.commit()
+
+    async def get_interactions_with_cost(
+        self,
+        persona_id: str,
+        since: Optional[datetime] = None
+    ) -> List[Interaction]:
+        """
+        Get interactions with cost metadata for cost tracking.
+
+        Args:
+            persona_id: UUID of the persona
+            since: Optional datetime to filter interactions created after this date
+
+        Returns:
+            List of Interaction objects with cost metadata
+        """
+        async with self.session_maker() as session:
+            # Build query for interactions
+            stmt = select(Interaction).where(Interaction.persona_id == persona_id)
+
+            # Apply date filter if provided
+            if since:
+                stmt = stmt.where(Interaction.created_at >= since)
+
+            # Order by created_at descending (newest first)
+            stmt = stmt.order_by(desc(Interaction.created_at))
+
+            result = await session.execute(stmt)
+            interactions = result.scalars().all()
+
+            # Filter to only include interactions with cost data in metadata
+            return [
+                i for i in interactions
+                if i.get_metadata() and "cost" in i.get_metadata()
+            ]

@@ -102,6 +102,8 @@ from app.api.v1 import (
     beliefs,
     moderation,
     stats,
+    stream,
+    governor,
 )
 
 app.include_router(health.router, prefix=settings.api_v1_prefix, tags=["health"])
@@ -113,6 +115,8 @@ app.include_router(activity.router, prefix=settings.api_v1_prefix, tags=["activi
 app.include_router(beliefs.router, prefix=settings.api_v1_prefix, tags=["beliefs"])
 app.include_router(moderation.router, prefix=settings.api_v1_prefix, tags=["moderation"])
 app.include_router(stats.router, prefix=settings.api_v1_prefix, tags=["stats"])
+app.include_router(stream.router, prefix=settings.api_v1_prefix, tags=["stream"])
+app.include_router(governor.router, prefix=settings.api_v1_prefix, tags=["governor"])
 
 
 @app.get("/")

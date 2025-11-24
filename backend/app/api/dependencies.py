@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import decode_access_token, get_user, User
+from app.services.memory_store import SQLiteMemoryStore
+from app.services.interfaces.memory_store import IMemoryStore
 
 
 # HTTP Bearer token scheme
@@ -123,7 +125,50 @@ async def get_current_active_user(
     return current_user
 
 
+def get_memory_store() -> IMemoryStore:
+    """
+    Dependency to get the memory store instance.
+
+    Returns:
+        IMemoryStore instance (SQLiteMemoryStore implementation)
+
+    Note:
+        Returns a new instance for each request. For production,
+        consider using a singleton pattern with proper connection pooling.
+    """
+    return SQLiteMemoryStore()
+
+
+def get_llm_client():
+    """
+    Dependency to get the LLM client instance.
+
+    Returns:
+        ILLMClient instance (OpenRouterClient implementation)
+
+    Note:
+        Placeholder for Week 3 implementation.
+    """
+    from app.services.llm_client import OpenRouterClient
+    return OpenRouterClient()
+
+
+def get_belief_updater():
+    """
+    Dependency to get the belief updater instance.
+
+    Returns:
+        BeliefUpdater instance
+
+    Note:
+        Placeholder for Week 4 implementation.
+    """
+    from app.services.belief_updater import BeliefUpdater
+    return BeliefUpdater()
+
+
 # Type alias for dependency injection
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
+MemoryStore = Annotated[IMemoryStore, Depends(get_memory_store)]

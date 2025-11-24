@@ -19,13 +19,16 @@ from app.core.security import get_password_hash, create_access_token
 from app.core.database import get_db
 
 
-@pytest.fixture
-async def async_session():
+@pytest.fixture(scope="function")
+async def db_engine():
     """
-    Create an in-memory database session for testing.
+    Create an in-memory database engine and session maker for testing.
+
+    Returns tuple of (engine, session_maker) to ensure all fixtures and the app
+    use the same in-memory database.
 
     Yields:
-        AsyncSession for testing
+        Tuple of (AsyncEngine, async_sessionmaker)
     """
     # Import all models to ensure they're registered with Base.metadata
     from app.models.persona import Persona  # noqa: F401
@@ -35,23 +38,43 @@ async def async_session():
     from app.models.interaction import Interaction  # noqa: F401
     from app.models.pending_post import PendingPost  # noqa: F401
 
+    # Use file::memory:?cache=shared to create a shared in-memory database
+    # that persists across connections within the same process
     engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        connect_args={"check_same_thread": False},
+        "sqlite+aiosqlite:///file::memory:?cache=shared&uri=true",
+        connect_args={"check_same_thread": False, "uri": True},
         poolclass=StaticPool,
     )
 
+    # Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    async_session_maker = async_sessionmaker(
+    # Create session maker
+    session_maker = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )
 
-    async with async_session_maker() as session:
-        yield session
+    yield engine, session_maker
 
     await engine.dispose()
+
+
+@pytest.fixture
+async def async_session(db_engine):
+    """
+    Create an async session from the shared engine.
+
+    Args:
+        db_engine: Tuple of (engine, session_maker)
+
+    Yields:
+        AsyncSession for testing
+    """
+    engine, session_maker = db_engine
+
+    async with session_maker() as session:
+        yield session
 
 
 @pytest.fixture
@@ -112,20 +135,23 @@ async def test_persona(async_session: AsyncSession):
 
 
 @pytest.fixture
-async def client(async_session: AsyncSession):
+async def client(db_engine):
     """
     Create async HTTP client with database override.
 
     Args:
-        async_session: Database session fixture
+        db_engine: Tuple of (engine, session_maker)
 
     Yields:
         AsyncClient for making requests
     """
     from httpx import ASGITransport
 
+    engine, session_maker = db_engine
+
     async def override_get_db():
-        yield async_session
+        async with session_maker() as session:
+            yield session
 
     app.dependency_overrides[get_db] = override_get_db
 
