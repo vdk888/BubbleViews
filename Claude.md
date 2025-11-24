@@ -237,7 +237,7 @@ Expect: JSON {
 - [Week 3 Plan](docs/week3.md) - Core agent services
 - [Week 4 Plan](docs/week4.md) - Agent loop, belief updates, dashboard
 - [Brainstorming](docs/brainstorming.md) - Original ideation and UX concepts
-
+- [Diagram](docs/architecture/system-diagram.md) - Diagram of all flows
 ---
 
 **Last updated**: 2025-11-24

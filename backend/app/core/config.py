@@ -34,6 +34,10 @@ class Settings(BaseSettings):
         default="sqlite+aiosqlite:///./data/reddit_agent.db",
         description="Database connection URL (SQLite for MVP, PostgreSQL-ready format)"
     )
+    data_directory: str = Field(
+        default="./data",
+        description="Directory for data storage (FAISS indexes, etc.)"
+    )
 
     # Reddit API Credentials
     reddit_client_id: str = Field(

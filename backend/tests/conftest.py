@@ -67,3 +67,35 @@ async def db_session():
     # Drop all tables after test
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest.fixture(scope="function")
+async def async_session():
+    """
+    Provide an async database session for memory store tests.
+
+    Creates tables before test and cleans up after.
+    Imports all models to ensure they're registered.
+    """
+    from app.core.database import engine, async_session_maker
+    from app.models.base import Base
+    # Import all models to ensure they're registered
+    from app.models.persona import Persona  # noqa: F401
+    from app.models.belief import BeliefNode, BeliefEdge, StanceVersion, EvidenceLink, BeliefUpdate  # noqa: F401, E501
+    from app.models.interaction import Interaction  # noqa: F401
+    from app.models.pending_post import PendingPost  # noqa: F401
+    from app.models.agent_config import AgentConfig  # noqa: F401
+    from app.models.user import User  # noqa: F401
+
+    # Create all tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    # Provide session
+    async with async_session_maker() as session:
+        yield session
+        await session.commit()
+
+    # Drop all tables after test
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
