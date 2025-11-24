@@ -12,7 +12,12 @@ Verifies:
 
 import asyncio
 import sys
+import os
 from pathlib import Path
+
+# Set UTF-8 encoding for Windows console
+if sys.platform == 'win32':
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 # Add backend to path for imports
 backend_path = Path(__file__).parent.parent
@@ -47,13 +52,13 @@ async def test_response_generation():
         print(f"Tokens Used: {response['tokens']}")
         print(f"Cost: ${response['cost']:.6f}")
         print(f"Correlation ID: {response['correlation_id']}")
-        print("\nSTATUS: PASSED ✓")
+        print("\nSTATUS: PASSED [OK]")
         return True
 
     except Exception as e:
         print(f"\nERROR: {e}")
         print(f"Error Type: {type(e).__name__}")
-        print("\nSTATUS: FAILED ✗")
+        print("\nSTATUS: FAILED [X]")
         return False
 
 
@@ -92,7 +97,7 @@ async def test_consistency_checking():
         print(f"Correlation ID: {result.get('correlation_id')}")
 
         if result.get('is_consistent'):
-            print("\nSTATUS: PASSED ✓")
+            print("\nSTATUS: PASSED [OK]")
             consistent_passed = True
         else:
             print("\nWARNING: Expected consistent but got inconsistent")
@@ -101,7 +106,7 @@ async def test_consistency_checking():
     except Exception as e:
         print(f"\nERROR: {e}")
         print(f"Error Type: {type(e).__name__}")
-        print("\nSTATUS: FAILED ✗")
+        print("\nSTATUS: FAILED [X]")
         consistent_passed = False
 
     # Test Case 2: Inconsistent response
@@ -132,7 +137,7 @@ async def test_consistency_checking():
         print(f"Correlation ID: {result.get('correlation_id')}")
 
         if not result.get('is_consistent'):
-            print("\nSTATUS: PASSED ✓")
+            print("\nSTATUS: PASSED [OK]")
             inconsistent_passed = True
         else:
             print("\nWARNING: Expected inconsistent but got consistent")
@@ -141,7 +146,7 @@ async def test_consistency_checking():
     except Exception as e:
         print(f"\nERROR: {e}")
         print(f"Error Type: {type(e).__name__}")
-        print("\nSTATUS: FAILED ✗")
+        print("\nSTATUS: FAILED [X]")
         inconsistent_passed = False
 
     return consistent_passed and inconsistent_passed
@@ -183,7 +188,7 @@ async def test_cost_tracking():
 
     # Verify cost is reasonable (should be < $0.01 for 3 simple calls)
     if total_cost < 0.01:
-        print("\nSTATUS: PASSED ✓")
+        print("\nSTATUS: PASSED [OK]")
         return True
     else:
         print("\nWARNING: Cost seems high for test calls")
@@ -235,7 +240,7 @@ async def main():
     total = len(results)
 
     for test_name, result in results:
-        status = "PASSED ✓" if result else "FAILED ✗"
+        status = "PASSED [OK]" if result else "FAILED [X]"
         print(f"{test_name}: {status}")
 
     print("-" * 70)

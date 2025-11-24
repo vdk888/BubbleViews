@@ -54,7 +54,11 @@ class OpenRouterClient(ILLMClient):
         """Initialize OpenRouter client with settings from config"""
         self.client = AsyncOpenAI(
             api_key=settings.openrouter_api_key,
-            base_url=settings.openrouter_base_url
+            base_url=settings.openrouter_base_url,
+            default_headers={
+                "HTTP-Referer": "https://github.com/your-repo",  # Optional
+                "X-Title": "Reddit AI Agent"  # Optional
+            }
         )
         self.response_model = settings.response_model
         self.consistency_model = settings.consistency_model
