@@ -12,12 +12,19 @@ import asyncio
 import json
 import os
 from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
-# Configuration
-OPENROUTER_API_KEY = "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"
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-RESPONSE_MODEL = "openai/gpt-4o-mini"  # Using gpt-4o-mini instead of gpt-5.1-mini (doesn't exist)
-CONSISTENCY_MODEL = "anthropic/claude-3.5-haiku"  # Using 3.5 instead of 4.5 (doesn't exist yet)
+# Load environment variables from .env
+load_dotenv()
+
+# Configuration from environment
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "openai/gpt-4o-mini")
+CONSISTENCY_MODEL = os.getenv("CONSISTENCY_MODEL", "anthropic/claude-3.5-haiku")
+
+if not OPENROUTER_API_KEY:
+    raise ValueError("OPENROUTER_API_KEY not found in environment. Please set it in .env file.")
 
 # Pricing (per 1M tokens)
 PRICING = {
