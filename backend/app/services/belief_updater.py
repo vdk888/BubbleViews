@@ -521,3 +521,99 @@ class BeliefUpdater:
             direction=direction,
             updated_by=updated_by
         )
+
+    async def manual_update(
+        self,
+        persona_id: str,
+        belief_id: str,
+        confidence: Optional[float] = None,
+        text: Optional[str] = None,
+        rationale: str = "Manual update",
+        updated_by: str = "admin"
+    ) -> float:
+        """
+        Manually update belief with specific confidence and/or text.
+
+        Unlike evidence-based updates, this allows direct setting of confidence
+        values. Useful for dashboard manual override feature.
+
+        Args:
+            persona_id: UUID of persona
+            belief_id: UUID of belief
+            confidence: New confidence value (if None, keeps current)
+            text: New stance text (if None, keeps current)
+            rationale: Reason for manual update
+            updated_by: Who made the update (default: "admin")
+
+        Returns:
+            New confidence value
+
+        Raises:
+            ValueError: If belief not found or confidence out of range
+            PermissionError: If stance is locked
+
+        Example:
+            >>> new_conf = await updater.manual_update(
+            ...     persona_id="uuid-123",
+            ...     belief_id="uuid-456",
+            ...     confidence=0.9,
+            ...     rationale="Admin override based on new research"
+            ... )
+        """
+        # Validate confidence if provided
+        if confidence is not None and not (0.0 <= confidence <= 1.0):
+            raise ValueError(f"confidence must be between 0.0 and 1.0, got {confidence}")
+
+        # Fetch belief with current stance
+        belief_data = await self.memory_store.get_belief_with_stances(
+            persona_id=persona_id,
+            belief_id=belief_id
+        )
+
+        belief = belief_data["belief"]
+        stances = belief_data["stances"]
+
+        # Check for current OR locked stance
+        current_stance = next((s for s in stances if s["status"] in ["current", "locked"]), None)
+        if not current_stance:
+            raise ValueError(f"No current or locked stance found for belief {belief_id}")
+
+        # If stance is locked, reject update (manual override can still be forced via unlock first)
+        if current_stance["status"] == "locked":
+            logger.warning(
+                f"Attempted manual update to locked stance: belief={belief_id}, persona={persona_id}",
+                extra={"belief_id": belief_id, "persona_id": persona_id, "updated_by": updated_by}
+            )
+            raise PermissionError(
+                f"Cannot update belief {belief_id}: stance is locked. "
+                f"Unlock the stance first to allow updates."
+            )
+
+        # Determine new values (use current if not provided)
+        new_confidence = confidence if confidence is not None else belief["current_confidence"]
+        new_text = text if text is not None else current_stance["text"]
+
+        # Use memory store to create new stance version
+        await self.memory_store.update_stance_version(
+            persona_id=persona_id,
+            belief_id=belief_id,
+            text=new_text,
+            confidence=new_confidence,
+            rationale=rationale,
+            updated_by=updated_by
+        )
+
+        logger.info(
+            f"Manual belief update completed: belief={belief_id}, "
+            f"old_conf={belief['current_confidence']:.3f}, new_conf={new_confidence:.3f}",
+            extra={
+                "belief_id": belief_id,
+                "persona_id": persona_id,
+                "old_confidence": belief["current_confidence"],
+                "new_confidence": new_confidence,
+                "updated_by": updated_by,
+                "trigger_type": "manual"
+            }
+        )
+
+        return new_confidence

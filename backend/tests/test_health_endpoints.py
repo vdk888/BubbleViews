@@ -81,8 +81,8 @@ class TestHealthEndpoint:
 class TestReadinessEndpoint:
     """Tests for /health/ready readiness probe."""
 
-    @patch('app.api.v1.health.check_database')
-    @patch('app.api.v1.health.check_openrouter')
+    @patch('app.api.v1.health.check_database', new_callable=AsyncMock)
+    @patch('app.api.v1.health.check_openrouter', new_callable=AsyncMock)
     def test_ready_all_checks_pass(self, mock_openrouter, mock_db):
         """
         Test /health/ready when all dependencies are healthy.
@@ -92,8 +92,8 @@ class TestReadinessEndpoint:
         Assert: Status 200, overall status "ready", all checks healthy
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=True)()
-        mock_openrouter.return_value = AsyncMock(return_value=True)()
+        mock_db.return_value = True
+        mock_openrouter.return_value = True
 
         # Act
         response = client.get("/api/v1/health/ready")
@@ -106,8 +106,8 @@ class TestReadinessEndpoint:
         assert data["checks"]["openrouter"]["healthy"] is True
         assert "timestamp" in data
 
-    @patch('app.api.v1.health.check_database')
-    @patch('app.api.v1.health.check_openrouter')
+    @patch('app.api.v1.health.check_database', new_callable=AsyncMock)
+    @patch('app.api.v1.health.check_openrouter', new_callable=AsyncMock)
     def test_ready_db_fails(self, mock_openrouter, mock_db):
         """
         Test /health/ready when database check fails.
@@ -117,8 +117,8 @@ class TestReadinessEndpoint:
         Assert: Status 503, overall status "not_ready", DB check failed
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=False)()
-        mock_openrouter.return_value = AsyncMock(return_value=True)()
+        mock_db.return_value = False
+        mock_openrouter.return_value = True
 
         # Act
         response = client.get("/api/v1/health/ready")
@@ -131,8 +131,8 @@ class TestReadinessEndpoint:
         assert data["checks"]["openrouter"]["healthy"] is True
         assert data["checks"]["db"]["error"] is not None
 
-    @patch('app.api.v1.health.check_database')
-    @patch('app.api.v1.health.check_openrouter')
+    @patch('app.api.v1.health.check_database', new_callable=AsyncMock)
+    @patch('app.api.v1.health.check_openrouter', new_callable=AsyncMock)
     def test_ready_openrouter_fails(self, mock_openrouter, mock_db):
         """
         Test /health/ready when OpenRouter check fails.
@@ -142,8 +142,8 @@ class TestReadinessEndpoint:
         Assert: Status 503, overall status "not_ready", OpenRouter check failed
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=True)()
-        mock_openrouter.return_value = AsyncMock(return_value=False)()
+        mock_db.return_value = True
+        mock_openrouter.return_value = False
 
         # Act
         response = client.get("/api/v1/health/ready")
@@ -156,8 +156,8 @@ class TestReadinessEndpoint:
         assert data["checks"]["openrouter"]["healthy"] is False
         assert data["checks"]["openrouter"]["error"] is not None
 
-    @patch('app.api.v1.health.check_database')
-    @patch('app.api.v1.health.check_openrouter')
+    @patch('app.api.v1.health.check_database', new_callable=AsyncMock)
+    @patch('app.api.v1.health.check_openrouter', new_callable=AsyncMock)
     def test_ready_all_checks_fail(self, mock_openrouter, mock_db):
         """
         Test /health/ready when all dependencies fail.
@@ -167,8 +167,8 @@ class TestReadinessEndpoint:
         Assert: Status 503, overall status "not_ready", all checks failed
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=False)()
-        mock_openrouter.return_value = AsyncMock(return_value=False)()
+        mock_db.return_value = False
+        mock_openrouter.return_value = False
 
         # Act
         response = client.get("/api/v1/health/ready")
@@ -180,8 +180,8 @@ class TestReadinessEndpoint:
         assert data["checks"]["db"]["healthy"] is False
         assert data["checks"]["openrouter"]["healthy"] is False
 
-    @patch('app.api.v1.health.check_database')
-    @patch('app.api.v1.health.check_openrouter')
+    @patch('app.api.v1.health.check_database', new_callable=AsyncMock)
+    @patch('app.api.v1.health.check_openrouter', new_callable=AsyncMock)
     def test_ready_includes_latency(self, mock_openrouter, mock_db):
         """
         Test that /health/ready includes latency measurements.
@@ -191,8 +191,8 @@ class TestReadinessEndpoint:
         Assert: All checks have latency_ms field
         """
         # Arrange
-        mock_db.return_value = AsyncMock(return_value=True)()
-        mock_openrouter.return_value = AsyncMock(return_value=True)()
+        mock_db.return_value = True
+        mock_openrouter.return_value = True
 
         # Act
         response = client.get("/api/v1/health/ready")

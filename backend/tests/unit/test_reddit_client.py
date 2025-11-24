@@ -220,7 +220,8 @@ class TestGetNewPosts:
         async def mock_new_generator(limit):
             yield mock_submission
 
-        mock_subreddit.new = Mock(return_value=mock_new_generator(10))
+        # Return a fresh generator each time .new() is called
+        mock_subreddit.new = Mock(side_effect=lambda limit: mock_new_generator(limit))
 
         posts = await reddit_client.get_new_posts(["test1", "test2"], limit=5)
 

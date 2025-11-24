@@ -646,3 +646,139 @@ class SQLiteMemoryStore(IMemoryStore):
                 "evidence": evidence_data,
                 "updates": updates_data,
             }
+
+    async def lock_stance(
+        self,
+        persona_id: str,
+        belief_id: str,
+        reason: Optional[str] = None,
+        updated_by: str = "admin"
+    ) -> None:
+        """
+        Lock the current stance to prevent automatic updates.
+
+        Args:
+            persona_id: UUID of persona
+            belief_id: UUID of belief
+            reason: Optional reason for locking
+            updated_by: Who locked the stance (default: "admin")
+
+        Raises:
+            ValueError: If belief not found or no current stance exists
+        """
+        async with self.session_maker() as session:
+            async with session.begin():
+                # Fetch belief with stances
+                stmt = (
+                    select(BeliefNode)
+                    .where(
+                        and_(
+                            BeliefNode.id == belief_id,
+                            BeliefNode.persona_id == persona_id
+                        )
+                    )
+                    .options(selectinload(BeliefNode.stance_versions))
+                )
+                result = await session.execute(stmt)
+                belief = result.scalar_one_or_none()
+
+                if not belief:
+                    raise ValueError(f"Belief {belief_id} not found for persona {persona_id}")
+
+                # Find current stance
+                current_stance = None
+                for stance in belief.stance_versions:
+                    if stance.status == "current":
+                        current_stance = stance
+                        break
+
+                if not current_stance:
+                    raise ValueError(f"No current stance found for belief {belief_id}")
+
+                # Update status to locked
+                old_status = current_stance.status
+                current_stance.status = "locked"
+                session.add(current_stance)
+
+                # Log the action
+                lock_reason = reason or "Stance locked to prevent automatic updates"
+                update_log = BeliefUpdate(
+                    persona_id=persona_id,
+                    belief_id=belief_id,
+                    old_value=json.dumps({"status": old_status}),
+                    new_value=json.dumps({"status": "locked"}),
+                    reason=lock_reason,
+                    trigger_type="manual",
+                    updated_by=updated_by,
+                )
+                session.add(update_log)
+
+                await session.commit()
+
+    async def unlock_stance(
+        self,
+        persona_id: str,
+        belief_id: str,
+        reason: Optional[str] = None,
+        updated_by: str = "admin"
+    ) -> None:
+        """
+        Unlock a locked stance to allow automatic updates.
+
+        Args:
+            persona_id: UUID of persona
+            belief_id: UUID of belief
+            reason: Optional reason for unlocking
+            updated_by: Who unlocked the stance (default: "admin")
+
+        Raises:
+            ValueError: If belief not found or no locked stance exists
+        """
+        async with self.session_maker() as session:
+            async with session.begin():
+                # Fetch belief with stances
+                stmt = (
+                    select(BeliefNode)
+                    .where(
+                        and_(
+                            BeliefNode.id == belief_id,
+                            BeliefNode.persona_id == persona_id
+                        )
+                    )
+                    .options(selectinload(BeliefNode.stance_versions))
+                )
+                result = await session.execute(stmt)
+                belief = result.scalar_one_or_none()
+
+                if not belief:
+                    raise ValueError(f"Belief {belief_id} not found for persona {persona_id}")
+
+                # Find locked stance
+                locked_stance = None
+                for stance in belief.stance_versions:
+                    if stance.status == "locked":
+                        locked_stance = stance
+                        break
+
+                if not locked_stance:
+                    raise ValueError(f"No locked stance found for belief {belief_id}")
+
+                # Update status back to current
+                old_status = locked_stance.status
+                locked_stance.status = "current"
+                session.add(locked_stance)
+
+                # Log the action
+                unlock_reason = reason or "Stance unlocked to allow automatic updates"
+                update_log = BeliefUpdate(
+                    persona_id=persona_id,
+                    belief_id=belief_id,
+                    old_value=json.dumps({"status": old_status}),
+                    new_value=json.dumps({"status": "current"}),
+                    reason=unlock_reason,
+                    trigger_type="manual",
+                    updated_by=updated_by,
+                )
+                session.add(update_log)
+
+                await session.commit()

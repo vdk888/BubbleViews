@@ -169,33 +169,31 @@ class TestJWTTokens:
 class TestAdminUserDatabase:
     """Test admin user database operations."""
 
-    async def test_create_admin_user(self):
+    async def test_create_admin_user(self, async_session):
         """Test creating an admin user in the database."""
         # Arrange
-        async with async_session_maker() as session:
-            # Clean up any existing admin
-            result = await session.execute(
-                select(Admin).where(Admin.username == "test_admin")
-            )
-            existing = result.scalar_one_or_none()
-            if existing:
-                await session.delete(existing)
-                await session.commit()
+        # Clean up any existing admin
+        result = await async_session.execute(
+            select(Admin).where(Admin.username == "test_admin")
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            await async_session.delete(existing)
+            await async_session.commit()
 
         # Act
-        async with async_session_maker() as session:
-            admin = Admin(
-                username="test_admin",
-                hashed_password=get_password_hash("test_password")
-            )
-            session.add(admin)
-            await session.commit()
+        admin = Admin(
+            username="test_admin",
+            hashed_password=get_password_hash("test_password")
+        )
+        async_session.add(admin)
+        await async_session.commit()
 
-            # Query back
-            result = await session.execute(
-                select(Admin).where(Admin.username == "test_admin")
-            )
-            retrieved_admin = result.scalar_one_or_none()
+        # Query back
+        result = await async_session.execute(
+            select(Admin).where(Admin.username == "test_admin")
+        )
+        retrieved_admin = result.scalar_one_or_none()
 
         # Assert
         assert retrieved_admin is not None
@@ -203,75 +201,59 @@ class TestAdminUserDatabase:
         assert retrieved_admin.hashed_password.startswith("$2b$")
         assert verify_password("test_password", retrieved_admin.hashed_password)
 
-        # Cleanup
-        async with async_session_maker() as session:
-            await session.delete(retrieved_admin)
-            await session.commit()
-
-    async def test_admin_username_unique(self):
+    async def test_admin_username_unique(self, async_session):
         """Test that admin usernames are unique."""
         # Arrange
-        async with async_session_maker() as session:
-            # Clean up
-            result = await session.execute(
-                select(Admin).where(Admin.username == "unique_test")
-            )
-            existing = result.scalar_one_or_none()
-            if existing:
-                await session.delete(existing)
-                await session.commit()
+        # Clean up
+        result = await async_session.execute(
+            select(Admin).where(Admin.username == "unique_test")
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            await async_session.delete(existing)
+            await async_session.commit()
 
-            # Create first admin
-            admin1 = Admin(
-                username="unique_test",
-                hashed_password=get_password_hash("password1")
-            )
-            session.add(admin1)
-            await session.commit()
+        # Create first admin
+        admin1 = Admin(
+            username="unique_test",
+            hashed_password=get_password_hash("password1")
+        )
+        async_session.add(admin1)
+        await async_session.commit()
+        await async_session.flush()
 
         # Act & Assert
         try:
-            async with async_session_maker() as session:
-                admin2 = Admin(
-                    username="unique_test",  # Same username
-                    hashed_password=get_password_hash("password2")
-                )
-                session.add(admin2)
-                await session.commit()
-                pytest.fail("Should have raised IntegrityError for duplicate username")
+            admin2 = Admin(
+                username="unique_test",  # Same username
+                hashed_password=get_password_hash("password2")
+            )
+            async_session.add(admin2)
+            await async_session.commit()
+            pytest.fail("Should have raised IntegrityError for duplicate username")
         except Exception as e:
             # Expected: IntegrityError or similar
             assert "unique" in str(e).lower() or "constraint" in str(e).lower()
+            await async_session.rollback()
 
-        # Cleanup
-        async with async_session_maker() as session:
-            result = await session.execute(
-                select(Admin).where(Admin.username == "unique_test")
-            )
-            admin = result.scalar_one_or_none()
-            if admin:
-                await session.delete(admin)
-                await session.commit()
-
-    async def test_authenticate_user_success(self):
+    async def test_authenticate_user_success(self, async_session):
         """Test authenticating a valid user."""
         # Arrange
-        async with async_session_maker() as session:
-            # Clean and create test user
-            result = await session.execute(
-                select(Admin).where(Admin.username == "auth_test")
-            )
-            existing = result.scalar_one_or_none()
-            if existing:
-                await session.delete(existing)
-                await session.commit()
+        # Clean and create test user
+        result = await async_session.execute(
+            select(Admin).where(Admin.username == "auth_test")
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            await async_session.delete(existing)
+            await async_session.commit()
 
-            admin = Admin(
-                username="auth_test",
-                hashed_password=get_password_hash("correct_password")
-            )
-            session.add(admin)
-            await session.commit()
+        admin = Admin(
+            username="auth_test",
+            hashed_password=get_password_hash("correct_password")
+        )
+        async_session.add(admin)
+        await async_session.commit()
 
         # Act
         user = await authenticate_user("auth_test", "correct_password")
@@ -280,35 +262,24 @@ class TestAdminUserDatabase:
         assert user is not None
         assert user.username == "auth_test"
 
-        # Cleanup
-        async with async_session_maker() as session:
-            result = await session.execute(
-                select(Admin).where(Admin.username == "auth_test")
-            )
-            admin = result.scalar_one_or_none()
-            if admin:
-                await session.delete(admin)
-                await session.commit()
-
-    async def test_authenticate_user_wrong_password(self):
+    async def test_authenticate_user_wrong_password(self, async_session):
         """Test authentication fails with wrong password."""
         # Arrange
-        async with async_session_maker() as session:
-            # Clean and create test user
-            result = await session.execute(
-                select(Admin).where(Admin.username == "auth_fail_test")
-            )
-            existing = result.scalar_one_or_none()
-            if existing:
-                await session.delete(existing)
-                await session.commit()
+        # Clean and create test user
+        result = await async_session.execute(
+            select(Admin).where(Admin.username == "auth_fail_test")
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            await async_session.delete(existing)
+            await async_session.commit()
 
-            admin = Admin(
-                username="auth_fail_test",
-                hashed_password=get_password_hash("correct_password")
-            )
-            session.add(admin)
-            await session.commit()
+        admin = Admin(
+            username="auth_fail_test",
+            hashed_password=get_password_hash("correct_password")
+        )
+        async_session.add(admin)
+        await async_session.commit()
 
         # Act
         user = await authenticate_user("auth_fail_test", "wrong_password")
@@ -316,17 +287,7 @@ class TestAdminUserDatabase:
         # Assert
         assert user is None
 
-        # Cleanup
-        async with async_session_maker() as session:
-            result = await session.execute(
-                select(Admin).where(Admin.username == "auth_fail_test")
-            )
-            admin = result.scalar_one_or_none()
-            if admin:
-                await session.delete(admin)
-                await session.commit()
-
-    async def test_authenticate_nonexistent_user(self):
+    async def test_authenticate_nonexistent_user(self, async_session):
         """Test authentication fails for non-existent user."""
         # Act
         user = await authenticate_user("nonexistent_user", "any_password")

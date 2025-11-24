@@ -58,3 +58,43 @@ class BeliefHistoryResponse(BaseModel):
     stances: List[StanceModel]
     evidence: List[EvidenceModel]
     updates: List[BeliefUpdateModel]
+
+
+# Request schemas for belief updates
+
+class BeliefUpdateRequest(BaseModel):
+    """Request to manually update a belief."""
+    persona_id: str
+    confidence: float | None = None
+    text: str | None = None
+    rationale: str
+
+
+class BeliefNudgeRequest(BaseModel):
+    """Request to nudge belief confidence."""
+    persona_id: str
+    direction: str  # "more_confident" or "less_confident"
+    amount: float = 0.1
+
+
+class BeliefLockRequest(BaseModel):
+    """Request to lock a belief stance."""
+    persona_id: str
+    reason: str | None = None
+
+
+class BeliefUnlockRequest(BaseModel):
+    """Request to unlock a belief stance."""
+    persona_id: str
+    reason: str | None = None
+
+
+# Response schemas
+
+class BeliefUpdateResponse(BaseModel):
+    """Response after updating a belief."""
+    belief_id: str
+    old_confidence: float
+    new_confidence: float
+    status: str
+    message: str

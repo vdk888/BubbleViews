@@ -8,16 +8,12 @@ using industry-standard libraries (passlib, python-jose).
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
-
-
-# Password hashing context using bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer token scheme for FastAPI
 security = HTTPBearer()
@@ -68,7 +64,19 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if password matches, False otherwise
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    # Encode the password to bytes
+    password_bytes = plain_password.encode('utf-8')
+    # Truncate to 72 bytes if needed (bcrypt limit)
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+
+    # Encode the hash to bytes if it's a string
+    if isinstance(hashed_password, str):
+        hashed_bytes = hashed_password.encode('utf-8')
+    else:
+        hashed_bytes = hashed_password
+
+    return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
 def get_password_hash(password: str) -> str:
@@ -80,8 +88,23 @@ def get_password_hash(password: str) -> str:
 
     Returns:
         Hashed password string
+
+    Note:
+        Bcrypt has a 72-byte password limit. Passwords are automatically
+        truncated if necessary (unlikely for typical passwords).
     """
-    return pwd_context.hash(password)
+    # Encode the password to bytes
+    password_bytes = password.encode('utf-8')
+    # Truncate to 72 bytes if needed (bcrypt limit)
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+
+    # Generate salt and hash
+    salt = bcrypt.gensalt(rounds=12)
+    hashed = bcrypt.hashpw(password_bytes, salt)
+
+    # Return as string for storage
+    return hashed.decode('utf-8')
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:

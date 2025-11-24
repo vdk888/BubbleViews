@@ -85,7 +85,7 @@ async def async_session():
     from app.models.interaction import Interaction  # noqa: F401
     from app.models.pending_post import PendingPost  # noqa: F401
     from app.models.agent_config import AgentConfig  # noqa: F401
-    from app.models.user import User  # noqa: F401
+    from app.models.user import Admin  # noqa: F401
 
     # Create all tables
     async with engine.begin() as conn:

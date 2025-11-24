@@ -190,7 +190,7 @@ class AsyncPRAWClient(IRedditClient):
             if subreddit:
                 search_target = await self.reddit.subreddit(subreddit)
             else:
-                search_target = self.reddit.subreddit("all")
+                search_target = await self.reddit.subreddit("all")
 
             # Perform search
             async for submission in search_target.search(

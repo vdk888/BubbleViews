@@ -9,60 +9,57 @@ Tests cover:
 """
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
 
 from app.main import app
-from app.core.database import async_session_maker
 from app.core.security import get_password_hash
 from app.models.user import Admin
 
 
 @pytest.fixture
-async def test_admin():
+async def test_admin(async_session):
     """Create a test admin user for authentication tests."""
-    async with async_session_maker() as session:
-        # Clean up any existing test admin
-        result = await session.execute(
-            select(Admin).where(Admin.username == "testadmin")
-        )
-        existing = result.scalar_one_or_none()
-        if existing:
-            await session.delete(existing)
-            await session.commit()
+    # Clean up any existing test admin
+    result = await async_session.execute(
+        select(Admin).where(Admin.username == "testadmin")
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        await async_session.delete(existing)
+        await async_session.commit()
 
-        # Create test admin
-        admin = Admin(
-            username="testadmin",
-            hashed_password=get_password_hash("testpassword123")
-        )
-        session.add(admin)
-        await session.commit()
+    # Create test admin
+    admin = Admin(
+        username="testadmin",
+        hashed_password=get_password_hash("testpassword123")
+    )
+    async_session.add(admin)
+    await async_session.commit()
 
-        # Refresh to get the created admin with ID
-        await session.refresh(admin)
-        admin_data = {
-            "username": admin.username,
-            "password": "testpassword123"
-        }
+    # Refresh to get the created admin with ID
+    await async_session.refresh(admin)
+    admin_data = {
+        "username": admin.username,
+        "password": "testpassword123"
+    }
 
     yield admin_data
 
     # Cleanup
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(Admin).where(Admin.username == "testadmin")
-        )
-        admin = result.scalar_one_or_none()
-        if admin:
-            await session.delete(admin)
-            await session.commit()
+    result = await async_session.execute(
+        select(Admin).where(Admin.username == "testadmin")
+    )
+    admin = result.scalar_one_or_none()
+    if admin:
+        await async_session.delete(admin)
+        await async_session.commit()
 
 
 @pytest.fixture
 async def auth_token(test_admin):
     """Get an authentication token for tests."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/token",
             data={
@@ -82,7 +79,7 @@ class TestAuthEndpoints:
     async def test_login_success(self, test_admin):
         """Test successful login returns JWT token."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -103,7 +100,7 @@ class TestAuthEndpoints:
     async def test_login_wrong_password(self, test_admin):
         """Test login with wrong password returns 401."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -119,10 +116,10 @@ class TestAuthEndpoints:
         assert "detail" in data
         assert "username or password" in data["detail"].lower()
 
-    async def test_login_nonexistent_user(self):
+    async def test_login_nonexistent_user(self, async_session):
         """Test login with non-existent user returns 401."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -135,10 +132,10 @@ class TestAuthEndpoints:
         # Assert
         assert response.status_code == 401
 
-    async def test_login_missing_username(self):
+    async def test_login_missing_username(self, async_session):
         """Test login without username returns 422."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -148,10 +145,10 @@ class TestAuthEndpoints:
         # Assert
         assert response.status_code == 422  # Validation error
 
-    async def test_login_missing_password(self):
+    async def test_login_missing_password(self, async_session):
         """Test login without password returns 422."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.post(
                 "/api/v1/auth/token",
@@ -164,7 +161,7 @@ class TestAuthEndpoints:
     async def test_get_current_user_me(self, auth_token):
         """Test /auth/me endpoint returns current user."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get(
                 "/api/v1/auth/me",
@@ -178,20 +175,20 @@ class TestAuthEndpoints:
         assert data["username"] == "testadmin"
         assert "full_name" in data
 
-    async def test_get_current_user_me_no_token(self):
+    async def test_get_current_user_me_no_token(self, async_session):
         """Test /auth/me without token returns 403."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/auth/me")
 
         # Assert
         assert response.status_code == 403  # Forbidden (no token)
 
-    async def test_get_current_user_me_invalid_token(self):
+    async def test_get_current_user_me_invalid_token(self, async_session):
         """Test /auth/me with invalid token returns 401."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get(
                 "/api/v1/auth/me",
@@ -209,7 +206,7 @@ class TestProtectedEndpoints:
     async def test_protected_test_endpoint_with_token(self, auth_token):
         """Test protected endpoint with valid token."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get(
                 "/api/v1/protected/test",
@@ -225,20 +222,20 @@ class TestProtectedEndpoints:
         assert data["username"] == "testadmin"
         assert data["authenticated"] is True
 
-    async def test_protected_test_endpoint_without_token(self):
+    async def test_protected_test_endpoint_without_token(self, async_session):
         """Test protected endpoint without token returns 403."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get("/api/v1/protected/test")
 
         # Assert
         assert response.status_code == 403
 
-    async def test_protected_test_endpoint_invalid_token(self):
+    async def test_protected_test_endpoint_invalid_token(self, async_session):
         """Test protected endpoint with invalid token returns 401."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get(
                 "/api/v1/protected/test",
@@ -251,7 +248,7 @@ class TestProtectedEndpoints:
     async def test_protected_user_info_endpoint(self, auth_token):
         """Test /protected/user-info endpoint."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act
             response = await client.get(
                 "/api/v1/protected/user-info",
@@ -270,7 +267,7 @@ class TestProtectedEndpoints:
     async def test_token_in_different_formats(self, auth_token):
         """Test that only Bearer token format is accepted."""
         # Arrange
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Act - without "Bearer" prefix
             response = await client.get(
                 "/api/v1/protected/test",
@@ -288,7 +285,7 @@ class TestAuthenticationFlow:
 
     async def test_complete_auth_flow(self, test_admin):
         """Test complete authentication flow: login -> access protected endpoint."""
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Step 1: Login
             login_response = await client.post(
                 "/api/v1/auth/token",
