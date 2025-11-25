@@ -1,31 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { apiClient, PersonaSummary } from "@/lib/api-client";
 import { usePersona } from "@/hooks/usePersona";
 
 export function PersonaSelector() {
   const router = useRouter();
+  const pathname = usePathname();
   const [personas, setPersonas] = useState<PersonaSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const { selectedPersonaId, selectPersona } = usePersona();
 
-  useEffect(() => {
-    setMounted(true);
-    const token = localStorage.getItem("auth_token");
-    if (token) {
-      // Ensure apiClient has the token before making requests
-      apiClient.setToken(token);
-      loadPersonas();
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadPersonas = async () => {
+  const loadPersonas = useCallback(async () => {
     try {
+      setLoading(true);
       const data = await apiClient.getPersonas();
       setPersonas(data);
 
@@ -40,7 +30,19 @@ export function PersonaSelector() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedPersonaId, selectPersona]);
+
+  useEffect(() => {
+    setMounted(true);
+    const token = localStorage.getItem("auth_token");
+    if (token) {
+      // Ensure apiClient has the token before making requests
+      apiClient.setToken(token);
+      loadPersonas();
+    } else {
+      setLoading(false);
+    }
+  }, [pathname, loadPersonas]); // Re-run when pathname changes (after login redirect)
 
   // Don't render anything until mounted (avoid hydration mismatch)
   if (!mounted) {

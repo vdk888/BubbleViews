@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { usePersona } from "@/hooks/usePersona";
 import { apiClient, BeliefGraphResponse, BeliefNode, BeliefHistoryResponse, RelationshipSuggestion } from "@/lib/api-client";
 import { BeliefGraphViz } from "@/components/BeliefGraphViz";
 import { BeliefListView } from "@/components/BeliefListView";
+import { CreateBeliefModal } from "@/components/CreateBeliefModal";
+import { RelationshipSuggestionsModal } from "@/components/RelationshipSuggestionsModal";
 
 export default function BeliefsPage() {
   const { selectedPersonaId } = usePersona();
@@ -22,10 +24,20 @@ export default function BeliefsPage() {
   // View mode toggle: "graph" or "list"
   const [viewMode, setViewMode] = useState<"graph" | "list">("graph");
 
+  // Create belief modal state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createdBeliefId, setCreatedBeliefId] = useState<string | null>(null);
+
   // Relationship suggestions state (for Phase 4 integration)
   const [showSuggestionModal, setShowSuggestionModal] = useState(false);
   const [suggestedRelationships, setSuggestedRelationships] = useState<RelationshipSuggestion[]>([]);
   const [suggestingRelationships, setSuggestingRelationships] = useState(false);
+
+  // Success toast state
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // Relationships created message state
+  const [relationsCreatingMessage, setRelationsCreatingMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedPersonaId) {
@@ -156,6 +168,29 @@ export default function BeliefsPage() {
     }).format(date);
   };
 
+  /**
+   * Handle belief creation callback
+   * Refreshes graph and shows relationship suggestions if available
+   */
+  const handleBeliefCreated = useCallback((beliefId: string, suggestions: RelationshipSuggestion[]) => {
+    // Reload graph to show new belief
+    loadGraph();
+
+    // Show success toast
+    setSuccessToast("Belief created successfully!");
+    setTimeout(() => setSuccessToast(null), 3000);
+
+    // If suggestions exist and auto_link was enabled, show modal
+    if (suggestions.length > 0) {
+      setCreatedBeliefId(beliefId);
+      setSuggestedRelationships(suggestions);
+      setShowSuggestionModal(true);
+    }
+
+    // Close create modal
+    setShowCreateModal(false);
+  }, []);
+
   // Handler for suggesting relationships for a belief
   const handleSuggestRelationships = async () => {
     if (!selectedBelief || !selectedPersonaId) return;
@@ -167,8 +202,16 @@ export default function BeliefsPage() {
         selectedBelief.id,
         selectedPersonaId
       );
-      setSuggestedRelationships(suggestions);
-      setShowSuggestionModal(true);
+      if (suggestions.length > 0) {
+        setSuggestedRelationships(suggestions);
+        setCreatedBeliefId(selectedBelief.id); // The belief we're suggesting for
+        setShowSuggestionModal(true);
+      } else {
+        setUpdateMessage({
+          type: "success",
+          text: "No new relationship suggestions found.",
+        });
+      }
     } catch (err) {
       setUpdateMessage({
         type: "error",
@@ -178,6 +221,22 @@ export default function BeliefsPage() {
       setSuggestingRelationships(false);
     }
   };
+
+  // Handler for when relationships are created from the suggestion modal
+  const handleRelationshipsCreated = useCallback(async () => {
+    setShowSuggestionModal(false);
+    setSuggestedRelationships([]);
+    setRelationsCreatingMessage("Relationships created successfully!");
+
+    // Reload graph and history
+    await loadGraph();
+    if (selectedBelief) {
+      await loadHistory(selectedBelief.id);
+    }
+
+    // Clear message after 3 seconds
+    setTimeout(() => setRelationsCreatingMessage(null), 3000);
+  }, [selectedBelief]);
 
   if (!selectedPersonaId) {
     return (
@@ -219,6 +278,12 @@ export default function BeliefsPage() {
               }`}
             >
               List View
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
+            >
+              + New Belief
             </button>
           </div>
         </div>
@@ -457,6 +522,56 @@ export default function BeliefsPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Success Toast */}
+      {successToast && (
+        <div className="fixed bottom-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="font-medium">{successToast}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Relationships Created Toast */}
+      {relationsCreatingMessage && (
+        <div className="fixed bottom-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-purple-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span className="font-medium">{relationsCreatingMessage}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Create Belief Modal */}
+      {selectedPersonaId && (
+        <CreateBeliefModal
+          isOpen={showCreateModal}
+          personaId={selectedPersonaId}
+          onClose={() => setShowCreateModal(false)}
+          onBeliefCreated={handleBeliefCreated}
+        />
+      )}
+
+      {/* Relationship Suggestions Modal */}
+      {selectedPersonaId && createdBeliefId && (
+        <RelationshipSuggestionsModal
+          isOpen={showSuggestionModal}
+          suggestions={suggestedRelationships}
+          personaId={selectedPersonaId}
+          sourceBeliefId={createdBeliefId}
+          onClose={() => {
+            setShowSuggestionModal(false);
+            setSuggestedRelationships([]);
+            setCreatedBeliefId(null);
+          }}
+          onRelationshipsCreated={handleRelationshipsCreated}
+        />
       )}
     </div>
   );

@@ -364,6 +364,40 @@ class ApiClient {
     });
   }
 
+  // Belief creation and relationship management endpoints
+  async createBelief(data: BeliefCreateRequest): Promise<BeliefCreateResponse> {
+    return this.request("/api/v1/beliefs", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async suggestRelationships(
+    belief_id: string,
+    persona_id: string
+  ): Promise<RelationshipSuggestion[]> {
+    return this.request(
+      `/api/v1/beliefs/${belief_id}/suggest-relationships?persona_id=${persona_id}`,
+      { method: "GET" }
+    );
+  }
+
+  async createRelationship(
+    belief_id: string,
+    data: RelationshipCreateRequest
+  ): Promise<{ edge_id: string }> {
+    return this.request(`/api/v1/beliefs/${belief_id}/relationships`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteRelationship(belief_id: string, edge_id: string): Promise<void> {
+    return this.request(`/api/v1/beliefs/${belief_id}/relationships/${edge_id}`, {
+      method: "DELETE",
+    });
+  }
+
   // Moderation endpoints
   async getPendingPosts(persona_id: string): Promise<PendingItem[]> {
     return this.request(`/api/v1/moderation/pending?persona_id=${persona_id}`);
