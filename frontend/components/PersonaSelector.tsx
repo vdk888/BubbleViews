@@ -9,12 +9,12 @@ export function PersonaSelector() {
   const router = useRouter();
   const [personas, setPersonas] = useState<PersonaSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [hasToken, setHasToken] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { selectedPersonaId, selectPersona } = usePersona();
 
   useEffect(() => {
+    setMounted(true);
     const token = localStorage.getItem("auth_token");
-    setHasToken(!!token);
     if (token) {
       // Ensure apiClient has the token before making requests
       apiClient.setToken(token);
@@ -42,8 +42,8 @@ export function PersonaSelector() {
     }
   };
 
-  // Don't render anything if no token
-  if (!hasToken) {
+  // Don't render anything until mounted (avoid hydration mismatch)
+  if (!mounted) {
     return null;
   }
 

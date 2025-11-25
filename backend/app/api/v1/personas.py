@@ -21,7 +21,7 @@ from app.schemas.persona import (
     PersonaCreateResponse
 )
 
-router = APIRouter()
+router = APIRouter(tags=["personas"])
 
 
 def get_persona_repository(
@@ -86,56 +86,7 @@ async def list_personas(
     response_model=PersonaCreateResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new persona",
-    description="""
-    Create a new persona with Reddit username, display name, and configuration.
-
-    **Authentication:** Required (Bearer token)
-
-    **Validation:**
-    - reddit_username: Unique, 3-255 characters, alphanumeric/underscore/hyphen only
-    - display_name: Optional, max 255 characters
-    - config: Optional configuration (uses defaults if not provided)
-
-    **Request Body:**
-    ```json
-    {
-        "reddit_username": "AgentBot123",
-        "display_name": "Friendly Agent",
-        "config": {
-            "tone": "friendly",
-            "style": "concise",
-            "core_values": ["honesty", "evidence-based reasoning"],
-            "target_subreddits": ["test"]
-        }
-    }
-    ```
-
-    **Response:**
-    ```json
-    {
-        "id": "123e4567-e89b-12d3-a456-426614174000",
-        "reddit_username": "AgentBot123",
-        "display_name": "Friendly Agent",
-        "config": {
-            "tone": "friendly",
-            "style": "concise",
-            "core_values": ["honesty"],
-            "target_subreddits": ["test"]
-        },
-        "created_at": "2025-11-25T10:30:00Z"
-    }
-    ```
-
-    **Error Codes:**
-    - 400 Bad Request: Invalid input data (validation errors)
-    - 401 Unauthorized: Not authenticated
-    - 409 Conflict: reddit_username already exists
-
-    **Note:**
-    After creation, the new persona will immediately appear in the persona
-    selector and can be used for all persona-scoped operations.
-    """,
-    tags=["personas"]
+    description="Create a new persona with Reddit username, display name, and configuration.",
 )
 async def create_persona(
     request: PersonaCreateRequest,
