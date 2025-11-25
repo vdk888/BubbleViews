@@ -18,19 +18,16 @@ export function PersonaSelector() {
       setLoading(true);
       const data = await apiClient.getPersonas();
       setPersonas(data);
-
-      // Auto-select first persona if none selected
-      if (data.length > 0 && !selectedPersonaId) {
-        selectPersona(data[0]);
-      }
+      return data;
     } catch (err) {
       // On any error, just show empty personas state (allow creating)
       console.error("Failed to load personas:", err);
       setPersonas([]);
+      return [];
     } finally {
       setLoading(false);
     }
-  }, [selectedPersonaId, selectPersona]);
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -38,11 +35,17 @@ export function PersonaSelector() {
     if (token) {
       // Ensure apiClient has the token before making requests
       apiClient.setToken(token);
-      loadPersonas();
+      loadPersonas().then((data) => {
+        // Auto-select first persona if none selected (only on initial load)
+        const storedPersonaId = localStorage.getItem("selected_persona_id");
+        if (data.length > 0 && !storedPersonaId) {
+          selectPersona(data[0]);
+        }
+      });
     } else {
       setLoading(false);
     }
-  }, [pathname, loadPersonas]); // Re-run when pathname changes (after login redirect)
+  }, [pathname, loadPersonas, selectPersona]); // Re-run when pathname changes (after login redirect)
 
   // Don't render anything until mounted (avoid hydration mismatch)
   if (!mounted) {

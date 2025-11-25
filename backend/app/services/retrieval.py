@@ -427,10 +427,12 @@ class RetrievalCoordinator:
         Assemble LLM prompt from persona and context.
 
         Builds structured prompt with sections:
-        1. Persona description
-        2. Current beliefs with confidence
-        3. Past relevant statements
-        4. Thread context
+        1. Persona description (with rich personality profile)
+        2. Writing rules (behavioral constraints)
+        3. Voice examples (few-shot demonstrations)
+        4. Current beliefs with confidence
+        5. Past relevant statements
+        6. Thread context
 
         Args:
             persona_config: Persona configuration
@@ -440,7 +442,10 @@ class RetrievalCoordinator:
                     "config": {
                         "tone": "witty",
                         "style": "informal",
-                        "values": ["evidence-based", "open-minded"]
+                        "values": ["evidence-based", "open-minded"],
+                        "personality_profile": "Rich backstory...",
+                        "writing_rules": ["Never use emojis", ...],
+                        "voice_examples": ["Example response...", ...]
                     }
                 }
             context: Assembled context from assemble_context()
@@ -450,22 +455,57 @@ class RetrievalCoordinator:
         """
         sections = []
 
-        # 1. Persona Section
+        # 1. Persona Section (enhanced with rich personality)
         persona_name = persona_config.get("display_name", "Agent")
         config = persona_config.get("config", {})
         tone = config.get("tone", "neutral")
         style = config.get("style", "casual")
-        values = config.get("values", [])
+        values = config.get("values", config.get("core_values", []))
+        personality_profile = config.get("personality_profile", "")
+        writing_rules = config.get("writing_rules", [])
+        voice_examples = config.get("voice_examples", [])
 
+        # Build enhanced persona section
         persona_section = f"""# Persona
-You are {persona_name}, a Reddit user with the following characteristics:
+You are {persona_name}."""
+
+        # Add rich personality profile if available
+        if personality_profile:
+            persona_section += f"""
+
+## Background & Personality
+{personality_profile}"""
+
+        # Add communication style section
+        persona_section += f"""
+
+## Communication Style
 - Tone: {tone}
 - Style: {style}
-- Core values: {", ".join(values)}
-"""
+- Core values: {", ".join(values) if values else "none specified"}"""
+
         sections.append(persona_section)
 
-        # 2. Beliefs Section
+        # 2. Writing Rules Section (MUST follow these)
+        if writing_rules:
+            rules_section = "# Writing Rules (MUST follow these)\n"
+            for i, rule in enumerate(writing_rules, 1):
+                rules_section += f"{i}. {rule}\n"
+            rules_section += """
+These rules define your authentic voice. Follow them consistently to maintain
+your unique personality and avoid sounding robotic or generic."""
+            sections.append(rules_section)
+
+        # 3. Voice Examples Section (few-shot demonstrations)
+        if voice_examples:
+            examples_section = "# Voice Examples\n"
+            examples_section += """These examples demonstrate your authentic voice and style.
+Use them as reference for tone, phrasing, and personality:\n\n"""
+            for i, example in enumerate(voice_examples, 1):
+                examples_section += f"Example {i}:\n\"{example}\"\n\n"
+            sections.append(examples_section)
+
+        # 4. Beliefs Section
         beliefs = context.get("beliefs", [])
         if beliefs:
             beliefs_section = "# Current Beliefs\n"
@@ -475,17 +515,18 @@ You are {persona_name}, a Reddit user with the following characteristics:
                 beliefs_section += f"- {title} (confidence: {confidence:.2f})\n"
             sections.append(beliefs_section)
 
-        # 3. Past Statements Section
+        # 5. Past Statements Section
         past_statements = context.get("past_statements", [])
         if past_statements:
             history_section = "# Past Statements on Similar Topics\n"
+            history_section += "Your previous responses on related topics (stay consistent):\n"
             for stmt in past_statements[:3]:  # Top 3 most similar
                 content = stmt["content"][:200]  # Truncate
                 similarity = stmt["similarity_score"]
                 history_section += f"- [{similarity:.2f}] {content}...\n"
             sections.append(history_section)
 
-        # 4. Thread Context Section
+        # 6. Thread Context Section
         thread = context.get("thread", {})
         thread_section = "# Current Thread\n"
         if "title" in thread:

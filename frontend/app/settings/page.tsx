@@ -30,6 +30,9 @@ export default function SettingsPage() {
   const [tone, setTone] = useState<string>("casual");
   const [style, setStyle] = useState<string>("concise");
   const [coreValues, setCoreValues] = useState<string>("");
+  const [personalityProfile, setPersonalityProfile] = useState<string>("");
+  const [writingRules, setWritingRules] = useState<string>("");
+  const [voiceExamples, setVoiceExamples] = useState<string>("");
 
   useEffect(() => {
     if (selectedPersonaId) {
@@ -70,6 +73,17 @@ export default function SettingsPage() {
       setCoreValues(
         Array.isArray(config.core_values)
           ? config.core_values.join(", ")
+          : ""
+      );
+      setPersonalityProfile((config.personality_profile as string) || "");
+      setWritingRules(
+        Array.isArray(config.writing_rules)
+          ? config.writing_rules.join("\n")
+          : ""
+      );
+      setVoiceExamples(
+        Array.isArray(config.voice_examples)
+          ? config.voice_examples.join("\n---\n")
           : ""
       );
     } catch (err) {
@@ -415,6 +429,97 @@ export default function SettingsPage() {
                 />
                 <p className="text-xs text-[var(--text-secondary)] mt-1">
                   Comma-separated list of core values that guide the persona
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Rich Personality Section */}
+          <div className="card border-[var(--border)]">
+            <div className="px-6 py-4 border-b border-[var(--border)]">
+              <h2 className="text-lg font-semibold">Rich Personality</h2>
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                Define a detailed personality to make your agent feel like a real human.
+              </p>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <label htmlFor="personality-profile" className="block text-sm font-semibold text-[var(--primary)] mb-2">
+                  Personality Profile
+                </label>
+                <textarea
+                  id="personality-profile"
+                  value={personalityProfile}
+                  onChange={(e) => setPersonalityProfile(e.target.value)}
+                  onBlur={() => {
+                    handleSaveTextSetting("personality_profile", personalityProfile.trim());
+                  }}
+                  placeholder={`Leo is a 34-year-old barista from Portland, Oregon who spent five years teaching English in Japan after college. He studied philosophy at Reed College and still reads Stoic texts for fun.
+
+His time abroad taught him to question his assumptions and appreciate different perspectives. He tends to pause mid-thought and rephrase things when he realizes he could say it better.
+
+Gets genuinely excited about obscure coffee facts and etymology.`}
+                  disabled={saving}
+                  className="w-full px-3 py-2 border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] disabled:opacity-50 bg-white text-[var(--text-primary)] min-h-[150px]"
+                />
+                <p className="text-xs text-[var(--text-secondary)] mt-1">
+                  Rich backstory including life events, formative experiences, career path, education,
+                  cultural context, speech quirks, habits, mannerisms, and emotional tendencies.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="writing-rules" className="block text-sm font-semibold text-[var(--primary)] mb-2">
+                  Writing Rules
+                </label>
+                <textarea
+                  id="writing-rules"
+                  value={writingRules}
+                  onChange={(e) => setWritingRules(e.target.value)}
+                  onBlur={() => {
+                    const rules = writingRules
+                      .split("\n")
+                      .map((r) => r.trim())
+                      .filter((r) => r.length > 0);
+                    handleSaveTextSetting("writing_rules", rules);
+                  }}
+                  placeholder={`Never use emojis
+Use contractions naturally like "I'm", "don't", "we're"
+Vary sentence length - mix short punchy sentences with longer ones
+Occasionally self-correct mid-response
+Show genuine curiosity by asking follow-up questions
+Avoid corporate-speak and overly formal language`}
+                  disabled={saving}
+                  className="w-full px-3 py-2 border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] disabled:opacity-50 bg-white text-[var(--text-primary)] min-h-[120px]"
+                />
+                <p className="text-xs text-[var(--text-secondary)] mt-1">
+                  One rule per line. These explicit behavioral rules define how the agent writes.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="voice-examples" className="block text-sm font-semibold text-[var(--primary)] mb-2">
+                  Voice Examples
+                </label>
+                <textarea
+                  id="voice-examples"
+                  value={voiceExamples}
+                  onChange={(e) => setVoiceExamples(e.target.value)}
+                  onBlur={() => {
+                    const examples = voiceExamples
+                      .split("\n---\n")
+                      .map((e) => e.trim())
+                      .filter((e) => e.length > 0);
+                    handleSaveTextSetting("voice_examples", examples);
+                  }}
+                  placeholder={`Hm, that's a really interesting take. I used to think the same way, actually, but then I spent some time living abroad and... well, it complicated things for me.
+---
+Wait, hold on - I think I misunderstood your point. Are you saying X or Y? Because those are pretty different and I want to make sure I'm responding to what you actually meant.`}
+                  disabled={saving}
+                  className="w-full px-3 py-2 border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] disabled:opacity-50 bg-white text-[var(--text-primary)] min-h-[150px]"
+                />
+                <p className="text-xs text-[var(--text-secondary)] mt-1">
+                  Few-shot examples of ideal responses. Separate multiple examples with "---" on its own line.
                 </p>
               </div>
             </div>

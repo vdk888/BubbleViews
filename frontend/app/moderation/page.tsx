@@ -202,6 +202,94 @@ export default function ModerationPage() {
                 <p className="text-[var(--primary)] whitespace-pre-wrap">{truncate(item.content, 500)}</p>
               </div>
 
+              {/* Belief Proposals Section */}
+              {item.belief_proposals && (
+                (item.belief_proposals.updates.length > 0 || item.belief_proposals.new_belief) && (
+                  <div className="mb-4 p-4 bg-purple-50 rounded border border-purple-200">
+                    <h4 className="font-semibold text-sm text-purple-800 mb-3 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      Belief Changes (on approval)
+                    </h4>
+
+                    {/* Confidence Updates */}
+                    {item.belief_proposals.updates.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {item.belief_proposals.updates.map((update) => (
+                          <div
+                            key={update.belief_id}
+                            className="flex items-center gap-3 text-sm bg-white p-2 rounded"
+                          >
+                            <span className="font-medium text-purple-900 flex-1 truncate">
+                              {update.belief_title}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500">
+                                {(update.current_confidence * 100).toFixed(0)}%
+                              </span>
+                              <span className="text-gray-400">→</span>
+                              <span
+                                className={
+                                  update.proposed_confidence > update.current_confidence
+                                    ? "text-green-600 font-semibold"
+                                    : "text-red-600 font-semibold"
+                                }
+                              >
+                                {(update.proposed_confidence * 100).toFixed(0)}%
+                              </span>
+                              <span
+                                className={`text-xs px-1.5 py-0.5 rounded ${
+                                  update.evidence_strength === "strong"
+                                    ? "bg-green-100 text-green-700"
+                                    : update.evidence_strength === "moderate"
+                                    ? "bg-yellow-100 text-yellow-700"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                {update.evidence_strength}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* New Belief */}
+                    {item.belief_proposals.new_belief && (
+                      <div className="bg-green-50 border border-green-200 rounded p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded">
+                            + New Belief
+                          </span>
+                          <span className="text-xs text-green-600">
+                            {(item.belief_proposals.new_belief.initial_confidence * 100).toFixed(0)}% confidence
+                          </span>
+                        </div>
+                        <p className="font-medium text-green-900">
+                          {item.belief_proposals.new_belief.title}
+                        </p>
+                        <p className="text-sm text-green-700 mt-1">
+                          {truncate(item.belief_proposals.new_belief.summary, 150)}
+                        </p>
+                        {item.belief_proposals.new_belief.tags.length > 0 && (
+                          <div className="flex gap-1 mt-2">
+                            {item.belief_proposals.new_belief.tags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => handleApprove(item)}

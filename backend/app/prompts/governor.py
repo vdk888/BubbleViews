@@ -64,15 +64,41 @@ def format_governor_context(
     Returns:
         Formatted context string
     """
-    # Format persona section
+    config = persona_config.get('config', {})
+
+    # Format persona section with enhanced personality fields
     persona_text = f"""
 Persona Configuration:
 - Username: {persona_config.get('reddit_username', 'unknown')}
 - Display Name: {persona_config.get('display_name', 'unknown')}
-- Tone: {persona_config.get('config', {}).get('tone', 'neutral')}
-- Style: {persona_config.get('config', {}).get('style', 'casual')}
-- Values: {', '.join(persona_config.get('config', {}).get('values', []))}
+- Tone: {config.get('tone', 'neutral')}
+- Style: {config.get('style', 'casual')}
+- Values: {', '.join(config.get('core_values', config.get('values', [])))}
 """
+
+    # Add personality profile if available
+    personality_profile = config.get('personality_profile', '')
+    if personality_profile:
+        # Truncate for context window management
+        profile_snippet = personality_profile[:500]
+        if len(personality_profile) > 500:
+            profile_snippet += "..."
+        persona_text += f"""
+Personality Profile:
+{profile_snippet}
+"""
+
+    # Add writing rules if available
+    writing_rules = config.get('writing_rules', [])
+    if writing_rules:
+        persona_text += "\nWriting Rules:\n"
+        for rule in writing_rules[:5]:  # Limit to top 5 rules
+            persona_text += f"- {rule}\n"
+
+    # Add voice examples if available (just mention count to save tokens)
+    voice_examples = config.get('voice_examples', [])
+    if voice_examples:
+        persona_text += f"\n(Has {len(voice_examples)} voice examples defined)\n"
 
     # Format belief graph section
     beliefs = belief_graph.get('nodes', [])

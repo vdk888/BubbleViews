@@ -18,6 +18,7 @@ export default function BeliefsPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editConfidence, setEditConfidence] = useState<number | null>(null);
+  const [editJustification, setEditJustification] = useState<string>("");
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -86,6 +87,7 @@ export default function BeliefsPage() {
     setSelectedBelief(node);
     setEditMode(false);
     setEditConfidence(null);
+    setEditJustification("");
     setUpdateMessage(null);
   };
 
@@ -94,10 +96,11 @@ export default function BeliefsPage() {
     setBeliefHistory(null);
     setEditMode(false);
     setEditConfidence(null);
+    setEditJustification("");
     setUpdateMessage(null);
   };
 
-  const handleNudge = async (direction: "increase" | "decrease") => {
+  const handleNudge = async (direction: "more_confident" | "less_confident") => {
     if (!selectedBelief || !selectedPersonaId) return;
 
     try {
@@ -108,13 +111,12 @@ export default function BeliefsPage() {
         persona_id: selectedPersonaId,
         direction,
         amount: 0.05,
-        reason: `Manual ${direction} via dashboard`,
       });
 
       // Reload graph and history
       await loadGraph();
       await loadHistory(selectedBelief.id);
-      setUpdateMessage({ type: "success", text: `Confidence ${direction}d successfully` });
+      setUpdateMessage({ type: "success", text: `Confidence updated successfully` });
       setTimeout(() => setUpdateMessage(null), 3000);
     } catch (err) {
       setUpdateMessage({
@@ -136,7 +138,7 @@ export default function BeliefsPage() {
       await apiClient.updateBelief(selectedBelief.id, {
         persona_id: selectedPersonaId,
         confidence: editConfidence,
-        rationale: "Manual confidence update via dashboard",
+        rationale: editJustification.trim() || "Manual confidence update via dashboard",
       });
 
       // Reload graph and history
@@ -144,6 +146,7 @@ export default function BeliefsPage() {
       await loadHistory(selectedBelief.id);
       setEditMode(false);
       setEditConfidence(null);
+      setEditJustification("");
       setUpdateMessage({ type: "success", text: "Belief updated successfully" });
       setTimeout(() => setUpdateMessage(null), 3000);
     } catch (err) {
@@ -172,13 +175,16 @@ export default function BeliefsPage() {
    * Handle belief creation callback
    * Refreshes graph and shows relationship suggestions if available
    */
-  const handleBeliefCreated = useCallback((beliefId: string, suggestions: RelationshipSuggestion[]) => {
-    // Reload graph to show new belief
-    loadGraph();
+  const handleBeliefCreated = useCallback(async (beliefId: string, suggestions: RelationshipSuggestion[]) => {
+    // Close create modal first for immediate feedback
+    setShowCreateModal(false);
 
     // Show success toast
     setSuccessToast("Belief created successfully!");
     setTimeout(() => setSuccessToast(null), 3000);
+
+    // Reload graph to show new belief
+    await loadGraph();
 
     // If suggestions exist and auto_link was enabled, show modal
     if (suggestions.length > 0) {
@@ -186,10 +192,7 @@ export default function BeliefsPage() {
       setSuggestedRelationships(suggestions);
       setShowSuggestionModal(true);
     }
-
-    // Close create modal
-    setShowCreateModal(false);
-  }, []);
+  }, [loadGraph]);
 
   // Handler for suggesting relationships for a belief
   const handleSuggestRelationships = async () => {
@@ -236,7 +239,7 @@ export default function BeliefsPage() {
 
     // Clear message after 3 seconds
     setTimeout(() => setRelationsCreatingMessage(null), 3000);
-  }, [selectedBelief]);
+  }, [loadGraph, selectedBelief]);
 
   if (!selectedPersonaId) {
     return (
@@ -377,14 +380,14 @@ export default function BeliefsPage() {
                       </div>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleNudge("decrease")}
+                          onClick={() => handleNudge("less_confident")}
                           disabled={updating}
                           className="flex-1 px-2 py-1 text-xs font-semibold rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
                         >
                           - Less confident
                         </button>
                         <button
-                          onClick={() => handleNudge("increase")}
+                          onClick={() => handleNudge("more_confident")}
                           disabled={updating}
                           className="flex-1 px-2 py-1 text-xs font-semibold rounded bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
                         >
@@ -394,6 +397,7 @@ export default function BeliefsPage() {
                           onClick={() => {
                             setEditMode(true);
                             setEditConfidence(selectedBelief.confidence || 0.5);
+                            setEditJustification("");
                           }}
                           className="flex-1 px-2 py-1 text-xs font-semibold rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
                         >
@@ -403,21 +407,33 @@ export default function BeliefsPage() {
                     </>
                   ) : (
                     <>
-                      <div className="space-y-2">
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={editConfidence || 0}
-                          onChange={(e) => setEditConfidence(parseFloat(e.target.value))}
-                          className="w-full"
-                          disabled={updating}
-                        />
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-semibold text-[var(--primary)]">
-                            {((editConfidence || 0) * 100).toFixed(0)}%
-                          </span>
+                      <div className="space-y-3">
+                        <div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={editConfidence || 0}
+                            onChange={(e) => setEditConfidence(parseFloat(e.target.value))}
+                            className="w-full"
+                            disabled={updating}
+                          />
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-[var(--primary)]">
+                              {((editConfidence || 0) * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                        </div>
+                        <div>
+                          <textarea
+                            className="w-full p-2 bg-[var(--card)] border border-[var(--border)] rounded text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+                            placeholder="Why are you changing the confidence? (optional)"
+                            value={editJustification}
+                            onChange={(e) => setEditJustification(e.target.value)}
+                            rows={2}
+                            disabled={updating}
+                          />
                         </div>
                       </div>
                       <div className="flex gap-2 mt-3">
@@ -432,6 +448,7 @@ export default function BeliefsPage() {
                           onClick={() => {
                             setEditMode(false);
                             setEditConfidence(null);
+                            setEditJustification("");
                           }}
                           disabled={updating}
                           className="flex-1 px-2 py-1 text-xs font-semibold rounded bg-gray-300 text-gray-700 hover:bg-gray-400 disabled:opacity-50"
@@ -478,22 +495,58 @@ export default function BeliefsPage() {
                       <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">
                         Stance History ({beliefHistory.stances.length})
                       </h3>
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {beliefHistory.stances.map((stance) => (
-                          <div key={stance.id} className="p-2 bg-[var(--card)] rounded border border-[var(--border)]">
-                            <div className="flex items-center justify-between mb-1 text-xs font-semibold">
-                              <span>{stance.status}</span>
-                              <span className="text-[var(--text-secondary)]">{stance.confidence?.toFixed(2)}</span>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {beliefHistory.stances.map((stance, index) => {
+                          const prevStance = beliefHistory.stances[index + 1];
+                          const confChange = prevStance && stance.confidence !== null && prevStance.confidence !== null
+                            ? stance.confidence - prevStance.confidence
+                            : null;
+
+                          return (
+                            <div
+                              key={stance.id}
+                              className={`p-3 rounded border ${
+                                stance.status === "current"
+                                  ? "bg-purple-50 border-purple-200"
+                                  : "bg-[var(--card)] border-[var(--border)]"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                  stance.status === "current"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : stance.status === "locked"
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}>
+                                  {stance.status}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  {confChange !== null && confChange !== 0 && (
+                                    <span className={`text-xs font-semibold ${
+                                      confChange > 0 ? "text-green-600" : "text-red-600"
+                                    }`}>
+                                      {confChange > 0 ? "+" : ""}{(confChange * 100).toFixed(0)}%
+                                    </span>
+                                  )}
+                                  <span className="text-sm font-bold text-[var(--primary)]">
+                                    {stance.confidence !== null ? `${(stance.confidence * 100).toFixed(0)}%` : "-"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {stance.rationale && (
+                                <p className="text-xs text-[var(--text-secondary)] mt-2 p-2 bg-white/50 rounded border-l-2 border-purple-300">
+                                  {stance.rationale}
+                                </p>
+                              )}
+
+                              <p className="text-[var(--text-secondary)] text-xs mt-2">
+                                {formatDate(stance.created_at)}
+                              </p>
                             </div>
-                            <p className="text-xs muted">
-                              {stance.text.substring(0, 100)}
-                              {stance.text.length > 100 ? "..." : ""}
-                            </p>
-                            <p className="text-[var(--text-secondary)] text-xs mt-1">
-                              {formatDate(stance.created_at)}
-                            </p>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
 

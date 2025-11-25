@@ -26,6 +26,7 @@ from app.services.interfaces.llm_client import ILLMClient
 from app.services.interfaces.memory_store import IMemoryStore
 from app.services.retrieval import RetrievalCoordinator
 from app.services.moderation import ModerationService
+from app.services.belief_analyzer import analyze_interaction_for_beliefs
 
 logger = logging.getLogger(__name__)
 
@@ -675,10 +676,10 @@ class AgentLoop:
                 # Log interaction
                 await self.memory_store.log_interaction(
                     persona_id=persona_id,
-                    reddit_id=reddit_id,
-                    interaction_type="comment",
                     content=draft,
+                    interaction_type="comment",
                     metadata={
+                        "reddit_id": reddit_id,
                         "parent_id": parent_id,
                         "subreddit": post["subreddit"],
                         "correlation_id": correlation_id,
@@ -703,13 +704,31 @@ class AgentLoop:
                 action = "queue"
 
         if action == "queue":
-            # Enqueue for review
+            # Analyze interaction for belief evolution proposals
+            thread_context = {
+                "subreddit": post.get("subreddit", ""),
+                "title": post.get("title", ""),
+                "body": post.get("selftext", post.get("body", "")),
+                "parent_comment": None  # Direct reply to post, no parent comment
+            }
+
+            belief_proposals = await analyze_interaction_for_beliefs(
+                persona_id=persona_id,
+                draft_content=draft,
+                thread_context=thread_context,
+                llm_client=self.llm_client,
+                memory_store=self.memory_store,
+                correlation_id=correlation_id
+            )
+
+            # Enqueue for review with belief proposals
             metadata = {
                 "post_type": "comment",
                 "target_subreddit": post["subreddit"],
                 "parent_id": parent_id,
                 "correlation_id": correlation_id,
-                "evaluation": decision["evaluation"]
+                "evaluation": decision["evaluation"],
+                "belief_proposals": belief_proposals.to_dict()
             }
 
             queue_id = await self.moderation.enqueue_for_review(
@@ -720,7 +739,12 @@ class AgentLoop:
 
             logger.info(
                 f"Enqueued draft for review: {queue_id}",
-                extra={"persona_id": persona_id, "correlation_id": correlation_id}
+                extra={
+                    "persona_id": persona_id,
+                    "correlation_id": correlation_id,
+                    "belief_update_count": len(belief_proposals.updates),
+                    "has_new_belief": belief_proposals.new_belief is not None
+                }
             )
 
             return f"queued:{queue_id}"

@@ -192,7 +192,7 @@ export default function GovernorPage() {
                 </span>
               )}
             </div>
-            <div className="prose prose-sm max-w-none text-[var(--text-primary)] prose-p:text-[var(--text-primary)] prose-strong:text-[var(--text-primary)] prose-li:text-[var(--text-primary)]">
+            <div style={{ color: 'black' }} className="prose prose-sm max-w-none prose-p:!text-black prose-strong:!text-black prose-li:!text-black prose-a:!text-blue-600 prose-h1:!text-black prose-h2:!text-black prose-h3:!text-black prose-code:!text-black">
               <ReactMarkdown>{msg.content}</ReactMarkdown>
             </div>
             {msg.sources && msg.sources.length > 0 && (

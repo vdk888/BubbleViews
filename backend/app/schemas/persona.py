@@ -20,6 +20,13 @@ class PersonaConfig(BaseModel):
         style: Writing style (e.g., "concise", "detailed", "technical")
         core_values: List of core values/beliefs that guide persona
         target_subreddits: List of subreddit names to monitor (optional)
+        personality_profile: Rich backstory including life events, formative experiences,
+            career path, education, cultural context, memories, speech quirks, habits,
+            mannerisms, and emotional tendencies. This makes the persona feel human.
+        writing_rules: Explicit behavioral rules for writing style (e.g., "Never use emojis",
+            "Use contractions naturally", "Vary sentence length", "Occasionally self-correct").
+        voice_examples: Optional few-shot examples of ideal responses demonstrating
+            the persona's authentic voice and style.
     """
     tone: Optional[str] = Field(default="casual", description="Writing tone")
     style: Optional[str] = Field(default="concise", description="Writing style")
@@ -31,6 +38,31 @@ class PersonaConfig(BaseModel):
         default_factory=list,
         description="List of subreddit names to monitor"
     )
+    personality_profile: Optional[str] = Field(
+        default=None,
+        description=(
+            "Rich backstory including life events, formative experiences, "
+            "career path, education background, country/region, cultural context, "
+            "memories backing convictions, speech quirks, habits, mannerisms, "
+            "and emotional tendencies. This detailed profile makes the persona "
+            "feel like a real human rather than an AI."
+        )
+    )
+    writing_rules: Optional[List[str]] = Field(
+        default_factory=list,
+        description=(
+            "Explicit behavioral rules for writing (e.g., 'Never use emojis', "
+            "'Use contractions naturally', 'Vary sentence length', "
+            "'Occasionally self-correct or rephrase', 'Express genuine curiosity')"
+        )
+    )
+    voice_examples: Optional[List[str]] = Field(
+        default_factory=list,
+        description=(
+            "Few-shot examples of ideal responses that demonstrate the persona's "
+            "authentic voice, style, and typical phrasing patterns"
+        )
+    )
 
     class Config:
         json_schema_extra = {
@@ -38,7 +70,29 @@ class PersonaConfig(BaseModel):
                 "tone": "friendly",
                 "style": "concise",
                 "core_values": ["honesty", "evidence-based reasoning"],
-                "target_subreddits": ["test", "bottest"]
+                "target_subreddits": ["test", "bottest"],
+                "personality_profile": (
+                    "Leo is a 34-year-old barista from Portland, Oregon who spent "
+                    "five years teaching English in Japan after college. He studied "
+                    "philosophy at Reed College and still reads Stoic texts for fun. "
+                    "His time abroad taught him to question his assumptions and "
+                    "appreciate different perspectives. He tends to pause mid-thought "
+                    "and rephrase things when he realizes he could say it better. "
+                    "Gets genuinely excited about obscure coffee facts and etymology."
+                ),
+                "writing_rules": [
+                    "Never use emojis",
+                    "Use contractions naturally like 'I'm', 'don't', 'we're'",
+                    "Vary sentence length - mix short punchy sentences with longer ones",
+                    "Occasionally self-correct mid-response with phrases like 'actually, let me rephrase that'",
+                    "Show genuine curiosity by asking follow-up questions",
+                    "Avoid corporate-speak and overly formal language",
+                    "Reference personal experiences when relevant"
+                ],
+                "voice_examples": [
+                    "Hm, that's a really interesting take. I used to think the same way, actually, but then I spent some time living abroad and... well, it complicated things for me. Not saying you're wrong - just that there might be more layers to it.",
+                    "Wait, hold on - I think I misunderstood your point. Are you saying X or Y? Because those are pretty different and I want to make sure I'm responding to what you actually meant."
+                ]
             }
         }
 

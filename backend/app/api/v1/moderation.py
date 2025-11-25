@@ -1,7 +1,13 @@
 """
 Moderation queue endpoints.
+
+Handles pending post approval/rejection with belief evolution:
+- On approval: Post to Reddit AND apply belief changes
+- On rejection: No changes applied
 """
 
+import logging
+import uuid
 from datetime import datetime
 from typing import List
 
@@ -10,15 +16,21 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
-from app.core.database import get_db
+from app.core.database import get_db, async_session_maker
 from app.core.config import settings
 from app.models.pending_post import PendingPost
+from app.models.belief import BeliefNode, StanceVersion
 from app.schemas.moderation import (
     PendingItem,
     ModerationActionRequest,
     ModerationDecisionResponse,
+    BeliefProposals,
 )
 from app.services.reddit_client import AsyncPRAWClient
+from app.services.memory_store import SQLiteMemoryStore
+from app.services.belief_updater import BeliefUpdater
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -40,20 +52,31 @@ async def list_pending(
     )
     result = await db.execute(stmt)
     items = result.scalars().all()
-    return [
-        PendingItem(
+
+    pending_items = []
+    for item in items:
+        metadata = item.get_draft_metadata()
+
+        # Extract belief proposals from metadata if present
+        belief_proposals = None
+        raw_proposals = metadata.get("belief_proposals")
+        if raw_proposals:
+            belief_proposals = BeliefProposals(**raw_proposals)
+
+        pending_items.append(PendingItem(
             id=item.id,
             persona_id=item.persona_id,
             content=item.content,
             post_type=item.post_type,
             target_subreddit=item.target_subreddit,
             parent_id=item.parent_id,
-            draft_metadata=item.get_draft_metadata(),
+            draft_metadata=metadata,
             status=item.status,
             created_at=item.created_at,
-        )
-        for item in items
-    ]
+            belief_proposals=belief_proposals,
+        ))
+
+    return pending_items
 
 
 async def _update_status(
@@ -132,6 +155,132 @@ async def _post_to_reddit(item: PendingPost) -> str:
         await client.close()
 
 
+async def _apply_belief_changes(
+    persona_id: str,
+    proposals: dict,
+    reviewer: str,
+    reddit_id: str,
+) -> dict:
+    """
+    Apply belief changes from proposals after successful Reddit post.
+
+    Args:
+        persona_id: UUID of the persona
+        proposals: Dict with 'updates' and 'new_belief' from belief_proposals
+        reviewer: Username of the admin who approved
+        reddit_id: Reddit ID of the posted content (for evidence linking)
+
+    Returns:
+        Dict with applied changes summary
+    """
+    results = {"updates_applied": 0, "new_belief_created": False, "errors": []}
+
+    if not proposals:
+        return results
+
+    memory_store = SQLiteMemoryStore()
+    belief_updater = BeliefUpdater(memory_store=memory_store)
+
+    # Apply confidence updates (max 3)
+    updates = proposals.get("updates", [])[:3]
+    for update in updates:
+        try:
+            belief_id = update.get("belief_id")
+            current_conf = update.get("current_confidence", 0.5)
+            proposed_conf = update.get("proposed_confidence", current_conf)
+            evidence_strength = update.get("evidence_strength", "moderate")
+            reason = update.get("reason", "From approved Reddit interaction")
+
+            # Determine direction
+            direction = "increase" if proposed_conf > current_conf else "decrease"
+
+            await belief_updater.update_from_evidence(
+                persona_id=persona_id,
+                belief_id=belief_id,
+                evidence_strength=evidence_strength,
+                direction=direction,
+                reason=f"[Approved by {reviewer}] {reason}",
+                updated_by=f"moderation:{reviewer}"
+            )
+            results["updates_applied"] += 1
+
+            logger.info(
+                "Applied belief update from moderation approval",
+                extra={
+                    "persona_id": persona_id,
+                    "belief_id": belief_id,
+                    "direction": direction,
+                    "evidence_strength": evidence_strength,
+                    "reviewer": reviewer
+                }
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to apply belief update: {e}",
+                extra={
+                    "persona_id": persona_id,
+                    "belief_id": update.get("belief_id"),
+                    "error": str(e)
+                }
+            )
+            results["errors"].append(f"Update {update.get('belief_id')}: {str(e)}")
+
+    # Create new belief (max 1)
+    new_belief = proposals.get("new_belief")
+    if new_belief:
+        try:
+            async with async_session_maker() as session:
+                async with session.begin():
+                    belief_id = str(uuid.uuid4())
+                    belief_node = BeliefNode(
+                        id=belief_id,
+                        persona_id=persona_id,
+                        title=new_belief.get("title", ""),
+                        summary=new_belief.get("summary", ""),
+                        current_confidence=new_belief.get("initial_confidence", 0.6),
+                    )
+                    belief_node.set_tags(new_belief.get("tags", []))
+                    session.add(belief_node)
+
+                    # Create initial stance
+                    stance_id = str(uuid.uuid4())
+                    stance = StanceVersion(
+                        id=stance_id,
+                        persona_id=persona_id,
+                        belief_id=belief_id,
+                        text=new_belief.get("summary", ""),
+                        confidence=new_belief.get("initial_confidence", 0.6),
+                        status="current",
+                        rationale=f"[Created from interaction approved by {reviewer}] {new_belief.get('reason', '')}",
+                    )
+                    session.add(stance)
+
+            results["new_belief_created"] = True
+            logger.info(
+                "Created new belief from moderation approval",
+                extra={
+                    "persona_id": persona_id,
+                    "belief_id": belief_id,
+                    "title": new_belief.get("title"),
+                    "reviewer": reviewer
+                }
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create new belief: {e}",
+                extra={
+                    "persona_id": persona_id,
+                    "title": new_belief.get("title"),
+                    "error": str(e)
+                }
+            )
+            results["errors"].append(f"New belief: {str(e)}")
+
+    return results
+
+
 @router.post(
     "/moderation/approve",
     response_model=ModerationDecisionResponse,
@@ -177,6 +326,32 @@ async def approve(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to publish to Reddit: {exc}"
         ) from exc
+
+    # Apply belief changes after successful Reddit post
+    metadata = item.get_draft_metadata()
+    belief_proposals = metadata.get("belief_proposals")
+    if belief_proposals:
+        belief_results = await _apply_belief_changes(
+            persona_id=payload.persona_id,
+            proposals=belief_proposals,
+            reviewer=current_user.username,
+            reddit_id=reddit_id,
+        )
+        # Store results in metadata for audit trail
+        metadata["belief_changes_applied"] = belief_results
+        item.set_draft_metadata(metadata)
+        db.add(item)
+        await db.commit()
+
+        logger.info(
+            "Applied belief changes on approval",
+            extra={
+                "item_id": payload.item_id,
+                "persona_id": payload.persona_id,
+                "updates_applied": belief_results["updates_applied"],
+                "new_belief_created": belief_results["new_belief_created"]
+            }
+        )
 
     return ModerationDecisionResponse(
         item_id=item.id,

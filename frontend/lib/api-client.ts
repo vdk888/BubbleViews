@@ -26,6 +26,28 @@ export interface StatsResponse {
   belief_updates: number;
 }
 
+export interface BeliefUpdateProposal {
+  belief_id: string;
+  belief_title: string;
+  current_confidence: number;
+  proposed_confidence: number;
+  reason: string;
+  evidence_strength: "weak" | "moderate" | "strong";
+}
+
+export interface NewBeliefProposal {
+  title: string;
+  summary: string;
+  initial_confidence: number;
+  tags: string[];
+  reason: string;
+}
+
+export interface BeliefProposals {
+  updates: BeliefUpdateProposal[];
+  new_belief: NewBeliefProposal | null;
+}
+
 export interface PendingItem {
   id: string;
   persona_id: string;
@@ -36,6 +58,7 @@ export interface PendingItem {
   draft_metadata: Record<string, unknown>;
   status: string;
   created_at: string | null;
+  belief_proposals: BeliefProposals | null;
 }
 
 export interface BeliefNode {
@@ -107,6 +130,24 @@ export interface PersonaConfig {
   style?: string;
   core_values?: string[];
   target_subreddits?: string[];
+  /**
+   * Rich backstory including life events, formative experiences,
+   * career path, education background, country/region, cultural context,
+   * memories backing convictions, speech quirks, habits, mannerisms,
+   * and emotional tendencies. Makes the persona feel human.
+   */
+  personality_profile?: string;
+  /**
+   * Explicit behavioral rules for writing style.
+   * Examples: "Never use emojis", "Use contractions naturally",
+   * "Vary sentence length", "Occasionally self-correct or rephrase"
+   */
+  writing_rules?: string[];
+  /**
+   * Few-shot examples of ideal responses demonstrating
+   * the persona's authentic voice and style.
+   */
+  voice_examples?: string[];
 }
 
 export interface PersonaCreateRequest {

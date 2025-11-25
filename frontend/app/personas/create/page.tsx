@@ -16,6 +16,9 @@ export default function CreatePersonaPage() {
   const [style, setStyle] = useState("concise");
   const [coreValues, setCoreValues] = useState("");
   const [targetSubreddits, setTargetSubreddits] = useState("");
+  const [personalityProfile, setPersonalityProfile] = useState("");
+  const [writingRules, setWritingRules] = useState("");
+  const [voiceExamples, setVoiceExamples] = useState("");
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -76,6 +79,13 @@ export default function CreatePersonaPage() {
           : undefined,
         target_subreddits: targetSubreddits
           ? targetSubreddits.split(',').map(s => s.trim()).filter(s => s)
+          : undefined,
+        personality_profile: personalityProfile.trim() || undefined,
+        writing_rules: writingRules
+          ? writingRules.split('\n').map(r => r.trim()).filter(r => r)
+          : undefined,
+        voice_examples: voiceExamples
+          ? voiceExamples.split('\n---\n').map(e => e.trim()).filter(e => e)
           : undefined,
       };
 
@@ -268,6 +278,85 @@ export default function CreatePersonaPage() {
               )}
               <p className="text-xs text-[var(--text-secondary)] mt-1">
                 Comma-separated list of subreddit names to monitor (without r/).
+              </p>
+            </div>
+          </div>
+
+          {/* Rich Personality Section */}
+          <div className="border-t border-[var(--border)] pt-6">
+            <h3 className="text-sm font-semibold text-[var(--primary)] mb-2">Rich Personality (Optional)</h3>
+            <p className="text-xs text-[var(--text-secondary)] mb-4">
+              Define a detailed personality to make your agent feel like a real human, not a robot.
+              Based on 2025 prompt engineering research for human-like AI personas.
+            </p>
+
+            {/* Personality Profile */}
+            <div className="mb-4">
+              <label htmlFor="personality_profile" className="block text-sm font-semibold text-[var(--primary)] mb-2">
+                Personality Profile
+              </label>
+              <textarea
+                id="personality_profile"
+                value={personalityProfile}
+                onChange={(e) => setPersonalityProfile(e.target.value)}
+                className="w-full px-3 py-2 border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] min-h-[150px]"
+                placeholder={`Leo is a 34-year-old barista from Portland, Oregon who spent five years teaching English in Japan after college. He studied philosophy at Reed College and still reads Stoic texts for fun.
+
+His time abroad taught him to question his assumptions and appreciate different perspectives. He tends to pause mid-thought and rephrase things when he realizes he could say it better.
+
+Gets genuinely excited about obscure coffee facts and etymology. Has a habit of making dad jokes that he thinks are funnier than they actually are. Grew up in a small town and still roots for the underdog.`}
+                disabled={loading}
+              />
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                Rich backstory including life events, formative experiences, career path, education,
+                cultural context, speech quirks, habits, mannerisms, and emotional tendencies.
+              </p>
+            </div>
+
+            {/* Writing Rules */}
+            <div className="mb-4">
+              <label htmlFor="writing_rules" className="block text-sm font-semibold text-[var(--primary)] mb-2">
+                Writing Rules
+              </label>
+              <textarea
+                id="writing_rules"
+                value={writingRules}
+                onChange={(e) => setWritingRules(e.target.value)}
+                className="w-full px-3 py-2 border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] min-h-[120px]"
+                placeholder={`Never use emojis
+Use contractions naturally like "I'm", "don't", "we're"
+Vary sentence length - mix short punchy sentences with longer ones
+Occasionally self-correct mid-response with phrases like "actually, let me rephrase that"
+Show genuine curiosity by asking follow-up questions
+Avoid corporate-speak and overly formal language
+Reference personal experiences when relevant`}
+                disabled={loading}
+              />
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                One rule per line. These explicit behavioral rules define how the agent writes.
+              </p>
+            </div>
+
+            {/* Voice Examples */}
+            <div>
+              <label htmlFor="voice_examples" className="block text-sm font-semibold text-[var(--primary)] mb-2">
+                Voice Examples (Optional)
+              </label>
+              <textarea
+                id="voice_examples"
+                value={voiceExamples}
+                onChange={(e) => setVoiceExamples(e.target.value)}
+                className="w-full px-3 py-2 border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] min-h-[150px]"
+                placeholder={`Hm, that's a really interesting take. I used to think the same way, actually, but then I spent some time living abroad and... well, it complicated things for me. Not saying you're wrong - just that there might be more layers to it.
+---
+Wait, hold on - I think I misunderstood your point. Are you saying X or Y? Because those are pretty different and I want to make sure I'm responding to what you actually meant.
+---
+Oh man, this reminds me of something I read about last week. Let me see if I can dig up the source...`}
+                disabled={loading}
+              />
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                Few-shot examples of ideal responses. Separate multiple examples with "---" on its own line.
+                These demonstrate your agent's authentic voice and style.
               </p>
             </div>
           </div>
