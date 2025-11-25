@@ -60,10 +60,10 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Start agent for a specific persona
+    # Start agent for a specific persona (runs every 4 hours by default)
     python scripts/run_agent.py --persona-id 8a48aee3-1359-4a5e-a052-6523aca2d0b1
 
-    # Start agent with custom interval
+    # Start agent with custom interval (120 seconds = 2 minutes)
     python scripts/run_agent.py --persona-id YOUR_UUID --interval 120
 
     # Start agent with custom response probability
@@ -92,8 +92,8 @@ Environment Variables:
     parser.add_argument(
         '--interval',
         type=int,
-        default=60,
-        help='Seconds between perception cycles (default: 60)'
+        default=14400,
+        help='Seconds between perception cycles (default: 14400 = 4 hours)'
     )
 
     parser.add_argument(

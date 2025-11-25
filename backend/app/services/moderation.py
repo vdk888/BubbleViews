@@ -39,14 +39,40 @@ class ModerationService(IModerationService):
     MIN_CONTENT_LENGTH = 10
     MAX_CONTENT_LENGTH = 10000
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, session_or_maker=None):
         """
         Initialize moderation service.
 
         Args:
-            db: Database session for queries
+            session_or_maker: Either an AsyncSession (for tests) or async session factory.
+                             Defaults to the global async_session_maker.
         """
-        self.db = db
+        from app.core.database import async_session_maker as default_maker
+
+        # Handle both session and session_maker
+        if session_or_maker is None:
+            self.session_maker = default_maker
+            self.provided_session = None
+        elif callable(session_or_maker):
+            self.session_maker = session_or_maker
+            self.provided_session = None
+        else:
+            # It's a session object, not a maker
+            self.session_maker = None
+            self.provided_session = session_or_maker
+
+    def _get_session(self):
+        """Get session context manager or provided session."""
+        if self.provided_session is not None:
+            from contextlib import asynccontextmanager
+
+            @asynccontextmanager
+            async def session_context():
+                yield self.provided_session
+
+            return session_context()
+        else:
+            return self.session_maker()
 
     async def evaluate_content(
         self,
@@ -175,9 +201,10 @@ class ModerationService(IModerationService):
         # Store additional metadata
         pending_post.set_draft_metadata(metadata)
 
-        self.db.add(pending_post)
-        await self.db.commit()
-        await self.db.refresh(pending_post)
+        async with self._get_session() as db:
+            db.add(pending_post)
+            await db.commit()
+            await db.refresh(pending_post)
 
         logger.info(
             f"Enqueued content for review: "
@@ -227,8 +254,9 @@ class ModerationService(IModerationService):
             AgentConfig.config_key == "auto_posting_enabled"
         )
 
-        result = await self.db.execute(stmt)
-        config = result.scalar_one_or_none()
+        async with self._get_session() as db:
+            result = await db.execute(stmt)
+            config = result.scalar_one_or_none()
 
         if config is None:
             # Default to False if not set

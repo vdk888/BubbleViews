@@ -104,6 +104,10 @@ class AgentManager:
         try:
             # Import here to avoid circular dependencies at module level
             import os
+            from dotenv import load_dotenv
+
+            # Load .env file to ensure environment variables are available
+            load_dotenv()
 
             # Initialize Reddit client
             self._reddit_client = AsyncPRAWClient(
@@ -118,16 +122,18 @@ class AgentManager:
             self._llm_client = OpenRouterClient()
 
             # Initialize memory store
-            self._memory_store = SQLiteMemoryStore(session_maker=async_session_maker)
+            self._memory_store = SQLiteMemoryStore(async_session_maker)
 
             # Initialize retrieval coordinator
+            from app.services.embedding import get_embedding_service
+            embedding_service = get_embedding_service()
             self._retrieval = RetrievalCoordinator(
                 memory_store=self._memory_store,
-                llm_client=self._llm_client
+                embedding_service=embedding_service
             )
 
             # Initialize moderation service
-            self._moderation = ModerationService(session_maker=async_session_maker)
+            self._moderation = ModerationService(async_session_maker)
 
             logger.info("Agent services initialized successfully")
 
