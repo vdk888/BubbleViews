@@ -198,8 +198,59 @@ export default function ModerationPage() {
                 <span className="text-sm text-[var(--text-secondary)]">{formatDate(item.created_at)}</span>
               </div>
 
-              <div className="mb-4 p-4 bg-[var(--card)] rounded border border-[var(--border)]">
-                <p className="text-[var(--primary)] whitespace-pre-wrap">{truncate(item.content, 500)}</p>
+              {/* Original Post Section */}
+              {item.draft_metadata?.original_post && (
+                <div className="mb-4 p-4 bg-blue-50 rounded border border-blue-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-sm text-blue-800 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      </svg>
+                      Original Post
+                    </h4>
+                    {item.draft_metadata.original_post.reddit_id && (
+                      <a
+                        href={`https://reddit.com/r/${item.target_subreddit}/comments/${item.draft_metadata.original_post.reddit_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                      >
+                        View on Reddit
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    )}
+                  </div>
+                  {item.draft_metadata.original_post.author && (
+                    <p className="text-xs text-blue-600 mb-1">
+                      by u/{item.draft_metadata.original_post.author}
+                    </p>
+                  )}
+                  {item.draft_metadata.original_post.title && (
+                    <p className="font-medium text-blue-900 mb-2">
+                      {item.draft_metadata.original_post.title}
+                    </p>
+                  )}
+                  {item.draft_metadata.original_post.body && (
+                    <p className="text-sm text-blue-800 whitespace-pre-wrap">
+                      {truncate(item.draft_metadata.original_post.body, 500)}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Proposed Response */}
+              <div className="mb-4">
+                <h4 className="font-semibold text-sm text-[var(--text-secondary)] mb-2 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                  </svg>
+                  Proposed Response
+                </h4>
+                <div className="p-4 bg-[var(--card)] rounded border border-[var(--border)]">
+                  <p className="text-[var(--primary)] whitespace-pre-wrap">{truncate(item.content, 500)}</p>
+                </div>
               </div>
 
               {/* Belief Proposals Section */}

@@ -525,13 +525,15 @@ class AgentLoop:
         user_message = f"Draft a comment in response to this Reddit post in r/{thread.get('subreddit')}."
 
         # Initial LLM call with tools enabled
+        # Use 1024 tokens to ensure enough room for a complete response
+        # after tool results are incorporated
         response = await self.llm_client.generate_response(
             system_prompt=system_prompt,
             context=context,
             user_message=user_message,
             tools=AGENT_TOOLS,  # Enable tool calling
             temperature=0.7,
-            max_tokens=500,
+            max_tokens=1024,
             correlation_id=correlation_id
         )
 
@@ -590,7 +592,7 @@ class AgentLoop:
                 tool_results=tool_results,
                 tools=AGENT_TOOLS,  # Allow more tool calls if needed
                 temperature=0.7,
-                max_tokens=500,
+                max_tokens=1024,
                 correlation_id=correlation_id
             )
 
@@ -856,14 +858,21 @@ class AgentLoop:
                 correlation_id=correlation_id
             )
 
-            # Enqueue for review with belief proposals
+            # Enqueue for review with belief proposals and original post context
             metadata = {
                 "post_type": "comment",
                 "target_subreddit": post["subreddit"],
                 "parent_id": parent_id,
                 "correlation_id": correlation_id,
                 "evaluation": decision["evaluation"],
-                "belief_proposals": belief_proposals.to_dict()
+                "belief_proposals": belief_proposals.to_dict(),
+                "original_post": {
+                    "title": post.get("title", ""),
+                    "body": post.get("selftext", ""),
+                    "url": post.get("url", ""),
+                    "reddit_id": post.get("id", ""),
+                    "author": post.get("author", "")
+                }
             }
 
             queue_id = await self.moderation.enqueue_for_review(
