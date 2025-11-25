@@ -1,6 +1,7 @@
 "use client";
 
 import { StatsSummary } from "@/components/StatsSummary";
+import { AgentControlPanel } from "@/components/AgentControlPanel";
 import { usePersona } from "@/hooks/usePersona";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
@@ -45,27 +46,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="card glass shadow-strong p-6">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-semibold text-[var(--text-secondary)]">Statut</p>
-            <span className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--primary)]">
-              <span className="h-2.5 w-2.5 rounded-full bg-[var(--primary)]"></span>
-              Synchro temps reel
-            </span>
-          </div>
-          <p className="text-2xl font-bold text-[var(--primary)] mb-2">
-            MVP Dashboard - Semaine 4
-          </p>
-          <p className="muted mb-4">
-            Visualisez les croyances, pilotez la moderation et assurez la transparence des actions
-            de l'agent. Identite alignee sur la charte officielle Bubble.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <span className="chip">Transparence</span>
-            <span className="chip">Innovation</span>
-            <span className="chip">Accessibilite</span>
-          </div>
-        </div>
+        <AgentControlPanel personaId={selectedPersonaId} />
       </div>
 
       <div className="section pt-0">
