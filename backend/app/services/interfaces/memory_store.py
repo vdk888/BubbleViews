@@ -392,3 +392,78 @@ class IMemoryStore(ABC):
             - Useful for dashboard belief detail view
         """
         pass
+
+    @abstractmethod
+    async def get_persona(
+        self,
+        persona_id: str
+    ) -> Dict[str, Any]:
+        """
+        Get persona by ID.
+
+        Retrieves persona details including configuration.
+
+        Args:
+            persona_id: UUID of the persona
+
+        Returns:
+            Dictionary with structure:
+            {
+                "id": "persona-uuid",
+                "reddit_username": "username",
+                "display_name": "Display Name",
+                "config": {...},
+                "created_at": "2025-11-24T...",
+                "updated_at": "2025-11-24T..."
+            }
+
+        Raises:
+            ValueError: If persona not found
+
+        Note:
+            - Config is parsed from JSON to dict
+            - Used by agent loop to load persona configuration
+        """
+        pass
+
+    @abstractmethod
+    async def search_interactions(
+        self,
+        persona_id: str,
+        reddit_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for interactions by Reddit ID.
+
+        Checks if the persona has already interacted with a specific
+        Reddit post or comment.
+
+        Args:
+            persona_id: UUID of the persona
+            reddit_id: Reddit ID to search for (e.g., "t1_abc123", "t3_def456")
+
+        Returns:
+            List of matching interactions (empty if none found):
+            [
+                {
+                    "id": "interaction-uuid",
+                    "content": "The interaction text",
+                    "interaction_type": "comment",
+                    "reddit_id": "t1_abc123",
+                    "subreddit": "AskReddit",
+                    "parent_id": "t3_def456",
+                    "metadata": {...},
+                    "created_at": "2025-11-24T..."
+                },
+                ...
+            ]
+
+        Raises:
+            ValueError: If persona not found
+
+        Note:
+            - Returns empty list if reddit_id not found
+            - Used by agent loop to filter already-seen posts
+            - Can match either exact reddit_id or parent_id
+        """
+        pass

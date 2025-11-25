@@ -105,6 +105,7 @@ from app.api.v1 import (
     stream,
     governor,
     costs,
+    agent,
 )
 
 app.include_router(health.router, prefix=settings.api_v1_prefix, tags=["health"])
@@ -119,6 +120,7 @@ app.include_router(stats.router, prefix=settings.api_v1_prefix, tags=["stats"])
 app.include_router(stream.router, prefix=settings.api_v1_prefix, tags=["stream"])
 app.include_router(governor.router, prefix=settings.api_v1_prefix, tags=["governor"])
 app.include_router(costs.router, prefix=settings.api_v1_prefix, tags=["costs"])
+app.include_router(agent.router, prefix=settings.api_v1_prefix, tags=["agent"])
 
 
 @app.get("/")

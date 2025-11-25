@@ -390,6 +390,45 @@ class ApiClient {
     const params = new URLSearchParams({ persona_id, period });
     return `${this.baseUrl}/api/v1/costs/export?${params}`;
   }
+
+  // Agent control endpoints
+  async startAgent(
+    persona_id: string,
+    options?: {
+      interval_seconds?: number;
+      max_posts_per_cycle?: number;
+      response_probability?: number;
+    }
+  ): Promise<{ persona_id: string; status: string; message: string; started_at?: string }> {
+    return this.request("/api/v1/agent/start", {
+      method: "POST",
+      body: JSON.stringify({
+        persona_id,
+        interval_seconds: options?.interval_seconds ?? 60,
+        max_posts_per_cycle: options?.max_posts_per_cycle ?? 5,
+        response_probability: options?.response_probability ?? 0.3,
+      }),
+    });
+  }
+
+  async stopAgent(persona_id: string): Promise<{ persona_id: string; status: string; message: string }> {
+    return this.request("/api/v1/agent/stop", {
+      method: "POST",
+      body: JSON.stringify({ persona_id }),
+    });
+  }
+
+  async getAgentStatus(persona_id: string): Promise<{
+    persona_id: string;
+    status: string;
+    started_at: string | null;
+    last_activity: string | null;
+    error_message: string | null;
+    cycle_count: number;
+  }> {
+    const params = new URLSearchParams({ persona_id });
+    return this.request(`/api/v1/agent/status?${params}`);
+  }
 }
 
 export const apiClient = new ApiClient();

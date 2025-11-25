@@ -890,3 +890,91 @@ class SQLiteMemoryStore(IMemoryStore):
                 i for i in interactions
                 if i.get_metadata() and "cost" in i.get_metadata()
             ]
+
+    async def get_persona(
+        self,
+        persona_id: str
+    ) -> Dict[str, Any]:
+        """
+        Get persona by ID.
+
+        Implements IMemoryStore.get_persona.
+        """
+        async with self._get_session() as session:
+            # Fetch persona
+            stmt = select(Persona).where(Persona.id == persona_id)
+            result = await session.execute(stmt)
+            persona = result.scalar_one_or_none()
+
+            if not persona:
+                raise ValueError(f"Persona {persona_id} not found")
+
+            # Build persona dict
+            return {
+                "id": persona.id,
+                "reddit_username": persona.reddit_username,
+                "display_name": persona.display_name,
+                "config": persona.get_config(),
+                "created_at": (
+                    persona.created_at.isoformat()
+                    if hasattr(persona.created_at, "isoformat")
+                    else persona.created_at
+                ),
+                "updated_at": (
+                    persona.updated_at.isoformat()
+                    if hasattr(persona.updated_at, "isoformat")
+                    else persona.updated_at
+                ),
+            }
+
+    async def search_interactions(
+        self,
+        persona_id: str,
+        reddit_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for interactions by Reddit ID.
+
+        Implements IMemoryStore.search_interactions.
+        """
+        async with self._get_session() as session:
+            # Verify persona exists
+            stmt = select(Persona).where(Persona.id == persona_id)
+            result = await session.execute(stmt)
+            persona = result.scalar_one_or_none()
+
+            if not persona:
+                raise ValueError(f"Persona {persona_id} not found")
+
+            # Search interactions by reddit_id or parent_id
+            stmt = select(Interaction).where(
+                and_(
+                    Interaction.persona_id == persona_id,
+                    or_(
+                        Interaction.reddit_id == reddit_id,
+                        Interaction.parent_id == reddit_id
+                    )
+                )
+            )
+
+            result = await session.execute(stmt)
+            interactions = result.scalars().all()
+
+            # Build result list
+            return [
+                {
+                    "id": interaction.id,
+                    "content": interaction.content,
+                    "interaction_type": interaction.interaction_type,
+                    "reddit_id": interaction.reddit_id,
+                    "subreddit": interaction.subreddit,
+                    "parent_id": interaction.parent_id,
+                    "metadata": interaction.get_metadata(),
+                    "created_at": (
+                        interaction.created_at.isoformat()
+                        if hasattr(interaction.created_at, "isoformat")
+                        else interaction.created_at
+                    ),
+                }
+                for interaction in interactions
+            ]

@@ -81,6 +81,67 @@ async def list_personas(
     ]
 
 
+@router.get(
+    "/personas/{persona_id}",
+    response_model=PersonaCreateResponse,
+    summary="Get persona by ID",
+    description="Returns full persona details including configuration.",
+)
+async def get_persona(
+    persona_id: str,
+    db: DatabaseSession,
+    current_user: CurrentActiveUser,
+) -> PersonaCreateResponse:
+    """
+    Get a single persona by ID.
+
+    Args:
+        persona_id: UUID of the persona to retrieve
+        db: Database session (from dependency)
+        current_user: Authenticated user (from dependency)
+
+    Returns:
+        PersonaCreateResponse with full persona details
+
+    Raises:
+        HTTPException 401: If not authenticated
+        HTTPException 404: If persona not found
+
+    Security:
+        - Requires valid JWT token
+    """
+    # Query persona
+    stmt = select(Persona).where(Persona.id == persona_id)
+    result = await db.execute(stmt)
+    persona = result.scalar_one_or_none()
+
+    if not persona:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Persona not found: {persona_id}"
+        )
+
+    # Parse config from JSON
+    config_dict = persona.get_config()
+
+    # Convert created_at to ISO format string
+    if persona.created_at:
+        if isinstance(persona.created_at, str):
+            created_at_str = persona.created_at
+        else:
+            created_at_str = persona.created_at.isoformat()
+    else:
+        created_at_str = ""
+
+    return PersonaCreateResponse(
+        id=persona.id,
+        reddit_username=persona.reddit_username,
+        display_name=persona.display_name,
+        config=config_dict,
+        created_at=created_at_str
+    )
+
+
 @router.post(
     "/personas",
     response_model=PersonaCreateResponse,
