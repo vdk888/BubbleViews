@@ -69,12 +69,6 @@ export default function RootLayout({
                 </div>
                 <div className="flex items-center gap-3">
                   <PersonaSelector />
-                  <Link
-                    href="/settings"
-                    className="soft-button text-sm hidden sm:inline-flex"
-                  >
-                    Preferences
-                  </Link>
                   <LogoutButton />
                 </div>
               </div>

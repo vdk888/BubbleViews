@@ -230,7 +230,9 @@ Expect: JSON {
 
 ## References
 
-- [0_dev.md](docs/0_dev.md) - Engineering quality guidelines
+**IMPORTANT : when spawning an agent, ALWAYS instruct him to read all the following docs before starting anything.**
+
+- [0_dev.md](docs/0_dev.md) - Engineering quality guidelines to be achieved.
 - [MVP Technical Spec](docs/MVP_Reddit_AI_Agent_Technical_Specification.md) - Full system design
 - [Architecture Build](docs/MVP%20Reddit%20AI%20Agent%20-%20Architecture%20Build.md) - Phase-by-phase build plan
 - [Week 2 Plan](docs/week2.md) - Foundation services

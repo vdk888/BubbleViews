@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api.dependencies import CurrentActiveUser, DatabaseSession
 from app.core.security import User
 from app.repositories.config import ConfigRepository
+from app.repositories.persona import PersonaRepository
 from app.schemas.config import (
     ConfigResponse,
     ConfigUpdateRequest,
@@ -52,6 +53,18 @@ def get_config_repository(
 
 
 ConfigRepo = Annotated[ConfigRepository, Depends(get_config_repository)]
+
+
+def get_persona_repository(
+    db: DatabaseSession
+) -> PersonaRepository:
+    """
+    Dependency to inject PersonaRepository.
+    """
+    return PersonaRepository(db)
+
+
+PersonaRepo = Annotated[PersonaRepository, Depends(get_persona_repository)]
 
 
 @router.get(
@@ -93,7 +106,8 @@ async def get_settings(
         example="123e4567-e89b-12d3-a456-426614174000"
     ),
     current_user: CurrentActiveUser = None,
-    repo: ConfigRepo = None
+    repo: ConfigRepo = None,
+    persona_repo: PersonaRepo = None
 ) -> ConfigResponse:
     """
     Get all configuration settings for a persona.
@@ -102,6 +116,7 @@ async def get_settings(
         persona_id: UUID of the persona (from query param)
         current_user: Authenticated user (from dependency)
         repo: ConfigRepository instance (from dependency)
+        persona_repo: PersonaRepository instance (from dependency)
 
     Returns:
         ConfigResponse with all config key-value pairs
@@ -114,19 +129,27 @@ async def get_settings(
         - Requires valid JWT token
         - Persona isolation enforced (no cross-persona access)
     """
-    # Validate persona exists
-    if not await repo.persona_exists(persona_id):
+    # Get persona with its base config
+    persona = await persona_repo.get_persona(persona_id)
+    if not persona:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Persona not found: {persona_id}"
         )
 
-    # Get all config for persona
-    config = await repo.get_all_config(persona_id)
+    # Start with persona's base config (from Persona.config field)
+    # persona.get_config() parses the JSON config field
+    base_config = persona.get_config() if persona.config else {}
+
+    # Merge with AgentConfig settings (which override base config)
+    agent_config = await repo.get_all_config(persona_id)
+
+    # Merge: AgentConfig values override base config
+    merged_config = {**base_config, **agent_config}
 
     return ConfigResponse(
         persona_id=persona_id,
-        config=config
+        config=merged_config
     )
 
 
