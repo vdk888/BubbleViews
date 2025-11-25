@@ -362,6 +362,133 @@ If no conflicts are found, set is_consistent to true and conflicts to an empty a
             )
             raise
 
+    async def continue_with_tool_results(
+        self,
+        messages: List[Dict],
+        tool_results: List[Dict],
+        tools: Optional[List[Dict]] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 500,
+        correlation_id: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Dict:
+        """
+        Continue LLM conversation after tool execution.
+
+        Called after the LLM requests tool calls and we've executed them.
+        Appends tool results to messages and gets the next response.
+
+        Args:
+            messages: The conversation history (will be extended with tool results)
+            tool_results: List of tool result dicts:
+                [{"tool_call_id": "...", "role": "tool", "content": "..."}]
+            tools: Optional tool definitions for potential additional calls
+            temperature: Sampling temperature (default 0.7)
+            max_tokens: Maximum tokens in response (default 500)
+            correlation_id: Optional request ID for tracing
+            model: Optional model override
+
+        Returns:
+            Dict with same structure as generate_response()
+        """
+        if correlation_id is None:
+            correlation_id = str(uuid.uuid4())
+
+        model_to_use = model or self.response_model
+
+        logger.info(
+            "Continuing with tool results",
+            extra={
+                "correlation_id": correlation_id,
+                "model": model_to_use,
+                "tool_result_count": len(tool_results),
+                "message_count": len(messages),
+            }
+        )
+
+        # Build extended messages with tool results
+        extended_messages = list(messages)  # Copy original messages
+
+        # Add each tool result as a message
+        for result in tool_results:
+            extended_messages.append({
+                "role": "tool",
+                "tool_call_id": result["tool_call_id"],
+                "content": result["content"]
+            })
+
+        try:
+            response = await self._call_with_retry(
+                model=model_to_use,
+                messages=extended_messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools
+            )
+
+            # Extract tool calls if present
+            tool_calls = []
+            if response.choices[0].message.tool_calls:
+                tool_calls = [
+                    {
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    }
+                    for tc in response.choices[0].message.tool_calls
+                ]
+
+            result = {
+                "text": response.choices[0].message.content or "",
+                "model": model_to_use,
+                "tokens_in": response.usage.prompt_tokens,
+                "tokens_out": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+                "cost": self.calculate_cost(
+                    model_to_use,
+                    response.usage.prompt_tokens,
+                    response.usage.completion_tokens
+                ),
+                "tool_calls": tool_calls,
+                "finish_reason": response.choices[0].finish_reason,
+                "correlation_id": correlation_id,
+                # Include updated messages for potential further tool calls
+                "messages": extended_messages + [{
+                    "role": "assistant",
+                    "content": response.choices[0].message.content,
+                    "tool_calls": response.choices[0].message.tool_calls
+                }] if response.choices[0].message.tool_calls else extended_messages
+            }
+
+            logger.info(
+                "Tool result continuation completed",
+                extra={
+                    "correlation_id": correlation_id,
+                    "tokens_in": result["tokens_in"],
+                    "tokens_out": result["tokens_out"],
+                    "cost": result["cost"],
+                    "finish_reason": result["finish_reason"],
+                    "tool_call_count": len(tool_calls)
+                }
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                "Failed to continue with tool results",
+                extra={
+                    "correlation_id": correlation_id,
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                },
+                exc_info=True
+            )
+            raise
+
     async def _call_with_retry(
         self,
         model: str,

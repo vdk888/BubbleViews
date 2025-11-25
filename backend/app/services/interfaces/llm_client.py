@@ -105,6 +105,55 @@ class ILLMClient(ABC):
         pass
 
     @abstractmethod
+    async def continue_with_tool_results(
+        self,
+        messages: List[Dict[str, Any]],
+        tool_results: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 500,
+        correlation_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Continue LLM conversation after tool execution.
+
+        Called after the LLM requests tool calls and we've executed them.
+        Sends the tool results back to get the final response.
+
+        Args:
+            messages: The conversation history up to and including the
+                assistant message with tool_calls
+            tool_results: List of tool result dicts in format:
+                [
+                    {
+                        "tool_call_id": "call_abc123",
+                        "role": "tool",
+                        "content": "{...json result...}"
+                    },
+                    ...
+                ]
+            tools: Optional tool definitions (for potential additional calls)
+            temperature: Sampling temperature (default 0.7)
+            max_tokens: Maximum tokens in response (default 500)
+            correlation_id: Optional request ID for tracing
+
+        Returns:
+            Dict with same structure as generate_response():
+                - text: Generated response text
+                - model: Model name used
+                - tokens_in: Prompt tokens consumed
+                - tokens_out: Completion tokens generated
+                - total_tokens: Sum of in + out
+                - cost: Calculated cost in USD
+                - tool_calls: List of tool calls if LLM wants more tools
+                - finish_reason: stop, length, tool_calls, etc.
+
+        Raises:
+            LLMAPIError: For API communication errors
+        """
+        pass
+
+    @abstractmethod
     def calculate_cost(
         self,
         model: str,

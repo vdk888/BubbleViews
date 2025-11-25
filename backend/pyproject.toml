@@ -20,6 +20,7 @@ dependencies = [
     "httpx>=0.26.0",
     "tiktoken>=0.5.0",              # Token counting for context budgets
     "sse-starlette>=1.6.5",        # Server-Sent Events for real-time updates
+    "trafilatura>=1.6.0",          # HTML to text extraction for web fetch
 ]
 
 [project.optional-dependencies]

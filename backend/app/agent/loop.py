@@ -5,16 +5,24 @@ Implements the main agent loop with phases:
 1. Perception: Monitor Reddit for new posts
 2. Decision: Decide whether to respond
 3. Retrieval: Assemble context (beliefs, past comments, evidence)
-4. Generation: Draft response via LLM
+4. Generation: Draft response via LLM (with tool calling support)
 5. Consistency: Check draft against beliefs
 6. Moderation: Evaluate content and decide action
 7. Action: Post immediately or enqueue for review
 
 Follows Week 4 Day 2 specifications with graceful shutdown,
 error handling, exponential backoff, and structured logging.
+
+Tool Calling:
+The agent can use tools during response generation, such as:
+- fetch_url: Fetch and read content from web URLs
+
+Tool calls are executed in a loop until the LLM returns a final response
+without tool calls, or max iterations is reached.
 """
 
 import asyncio
+import json
 import logging
 import random
 import uuid
@@ -27,8 +35,13 @@ from app.services.interfaces.memory_store import IMemoryStore
 from app.services.retrieval import RetrievalCoordinator
 from app.services.moderation import ModerationService
 from app.services.belief_analyzer import analyze_interaction_for_beliefs
+from app.agent.tools import AGENT_TOOLS
+from app.agent.tool_executor import ToolExecutor, create_tool_executor
 
 logger = logging.getLogger(__name__)
+
+# Maximum tool calling iterations to prevent infinite loops
+MAX_TOOL_ITERATIONS = 3
 
 
 class AgentLoop:
@@ -54,6 +67,7 @@ class AgentLoop:
         memory_store: IMemoryStore,
         retrieval: RetrievalCoordinator,
         moderation: ModerationService,
+        tool_executor: Optional[ToolExecutor] = None,
         interval_seconds: int = 14400,
         max_posts_per_cycle: int = 5,
         response_probability: float = 0.3,
@@ -67,6 +81,7 @@ class AgentLoop:
             memory_store: Memory store for interactions and beliefs
             retrieval: Retrieval coordinator for context assembly
             moderation: Moderation service for content evaluation
+            tool_executor: Optional tool executor for LLM tool calls (auto-created if None)
             interval_seconds: Seconds between perception cycles (default: 14400 = 4 hours)
             max_posts_per_cycle: Max posts to process per cycle (default: 5)
             response_probability: Probability of responding to eligible posts (default: 0.3)
@@ -76,6 +91,7 @@ class AgentLoop:
         self.memory_store = memory_store
         self.retrieval = retrieval
         self.moderation = moderation
+        self.tool_executor = tool_executor or create_tool_executor()
 
         self.interval_seconds = interval_seconds
         self.max_posts_per_cycle = max_posts_per_cycle
@@ -467,10 +483,12 @@ class AgentLoop:
         correlation_id: str
     ) -> Dict[str, Any]:
         """
-        Generate draft response using LLM.
+        Generate draft response using LLM with tool calling support.
 
         Builds system prompt from persona config and calls LLM client
-        to generate a response based on assembled context.
+        to generate a response based on assembled context. If the LLM
+        requests tool calls (e.g., fetch_url), executes them and continues
+        the conversation until a final response is generated.
 
         Args:
             persona_id: UUID of persona
@@ -485,7 +503,8 @@ class AgentLoop:
                 "tokens_in": 1234,
                 "tokens_out": 567,
                 "total_tokens": 1801,
-                "cost": 0.0234
+                "cost": 0.0234,
+                "tool_calls_made": 2  # Number of tool calls during generation
             }
 
         Raises:
@@ -505,17 +524,133 @@ class AgentLoop:
         thread = context.get("thread", {})
         user_message = f"Draft a comment in response to this Reddit post in r/{thread.get('subreddit')}."
 
-        # Call LLM
+        # Initial LLM call with tools enabled
         response = await self.llm_client.generate_response(
             system_prompt=system_prompt,
             context=context,
             user_message=user_message,
+            tools=AGENT_TOOLS,  # Enable tool calling
             temperature=0.7,
             max_tokens=500,
             correlation_id=correlation_id
         )
 
-        return response
+        # Track metrics
+        total_tokens_in = response.get("tokens_in", 0)
+        total_tokens_out = response.get("tokens_out", 0)
+        total_cost = response.get("cost", 0.0)
+        tool_calls_made = 0
+
+        # Build messages for potential continuation
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Context: {json.dumps(context)}\n\nMessage: {user_message}"},
+        ]
+
+        # If there are tool calls, add assistant message with them
+        if response.get("tool_calls"):
+            messages.append({
+                "role": "assistant",
+                "content": response.get("text", ""),
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": tc["type"],
+                        "function": tc["function"]
+                    }
+                    for tc in response["tool_calls"]
+                ]
+            })
+
+        # Handle tool calls in a loop
+        iteration = 0
+        while response.get("tool_calls") and iteration < MAX_TOOL_ITERATIONS:
+            iteration += 1
+            tool_calls = response["tool_calls"]
+            tool_calls_made += len(tool_calls)
+
+            logger.info(
+                f"Processing {len(tool_calls)} tool call(s) (iteration {iteration})",
+                extra={
+                    "correlation_id": correlation_id,
+                    "tool_names": [tc["function"]["name"] for tc in tool_calls],
+                    "iteration": iteration
+                }
+            )
+
+            # Execute all tool calls
+            tool_results = await self.tool_executor.execute_tool_calls(
+                tool_calls=tool_calls,
+                correlation_id=correlation_id
+            )
+
+            # Continue conversation with tool results
+            response = await self.llm_client.continue_with_tool_results(
+                messages=messages,
+                tool_results=tool_results,
+                tools=AGENT_TOOLS,  # Allow more tool calls if needed
+                temperature=0.7,
+                max_tokens=500,
+                correlation_id=correlation_id
+            )
+
+            # Accumulate metrics
+            total_tokens_in += response.get("tokens_in", 0)
+            total_tokens_out += response.get("tokens_out", 0)
+            total_cost += response.get("cost", 0.0)
+
+            # Update messages for potential next iteration
+            if response.get("tool_calls"):
+                # Add tool results and new assistant message to history
+                for result in tool_results:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": result["tool_call_id"],
+                        "content": result["content"]
+                    })
+                messages.append({
+                    "role": "assistant",
+                    "content": response.get("text", ""),
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": tc["type"],
+                            "function": tc["function"]
+                        }
+                        for tc in response["tool_calls"]
+                    ]
+                })
+
+        if iteration >= MAX_TOOL_ITERATIONS and response.get("tool_calls"):
+            logger.warning(
+                f"Max tool iterations ({MAX_TOOL_ITERATIONS}) reached, using partial response",
+                extra={"correlation_id": correlation_id}
+            )
+
+        # Build final result
+        result = {
+            "text": response.get("text", ""),
+            "model": response.get("model", "unknown"),
+            "tokens_in": total_tokens_in,
+            "tokens_out": total_tokens_out,
+            "total_tokens": total_tokens_in + total_tokens_out,
+            "cost": total_cost,
+            "tool_calls_made": tool_calls_made,
+            "finish_reason": response.get("finish_reason", "unknown"),
+        }
+
+        if tool_calls_made > 0:
+            logger.info(
+                f"Draft generation completed with {tool_calls_made} tool call(s)",
+                extra={
+                    "correlation_id": correlation_id,
+                    "tool_calls_made": tool_calls_made,
+                    "total_tokens": result["total_tokens"],
+                    "total_cost": total_cost
+                }
+            )
+
+        return result
 
     async def check_draft_consistency(
         self,
@@ -818,6 +953,7 @@ async def run_agent(
     memory_store: IMemoryStore,
     retrieval: RetrievalCoordinator,
     moderation: ModerationService,
+    tool_executor: Optional[ToolExecutor] = None,
     stop_event: Optional[asyncio.Event] = None,
     interval_seconds: int = 14400
 ) -> None:
@@ -831,6 +967,7 @@ async def run_agent(
         memory_store: Memory store instance
         retrieval: Retrieval coordinator instance
         moderation: Moderation service instance
+        tool_executor: Optional tool executor (auto-created if None)
         stop_event: Optional stop event
         interval_seconds: Seconds between cycles (default: 14400 = 4 hours)
 
@@ -843,6 +980,7 @@ async def run_agent(
         memory_store=memory_store,
         retrieval=retrieval,
         moderation=moderation,
+        tool_executor=tool_executor,
         interval_seconds=interval_seconds
     )
 

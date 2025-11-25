@@ -5,15 +5,99 @@ Assembles context for LLM prompts by orchestrating retrieval from multiple sourc
 - Belief graph (current stances and relations)
 - Past self-comments (via FAISS semantic search)
 - Evidence links supporting beliefs
+- URL extraction from persona profiles and thread content
 
 Implements token budget enforcement to stay within LLM context limits.
 """
 
-from typing import Dict, List, Optional, Any
+import re
+from typing import Dict, List, Optional, Any, Tuple
 import tiktoken
 
 from app.services.interfaces.memory_store import IMemoryStore
 from app.services.embedding import EmbeddingService
+
+
+def extract_markdown_links(text: str) -> List[Dict[str, str]]:
+    """
+    Extract markdown links from text.
+
+    Parses [description](url) patterns and returns structured list.
+
+    Args:
+        text: Text containing markdown links
+
+    Returns:
+        List of dicts with 'description' and 'url' keys:
+        [
+            {"description": "this article", "url": "https://example.com/article"},
+            ...
+        ]
+    """
+    if not text:
+        return []
+
+    # Pattern matches [description](url) - handles nested brackets and various URL chars
+    pattern = r'\[([^\]]+)\]\(([^)]+)\)'
+    matches = re.findall(pattern, text)
+
+    links = []
+    seen_urls = set()  # Deduplicate by URL
+
+    for description, url in matches:
+        url = url.strip()
+        # Skip empty URLs or duplicates
+        if not url or url in seen_urls:
+            continue
+
+        # Basic URL validation - must start with http(s)://
+        if not url.startswith(('http://', 'https://')):
+            continue
+
+        seen_urls.add(url)
+        links.append({
+            "description": description.strip(),
+            "url": url
+        })
+
+    return links
+
+
+def extract_urls_from_context(
+    personality_profile: str | None,
+    writing_rules: List[str] | None,
+    thread_content: str | None
+) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+    """
+    Extract URLs from persona context and thread content.
+
+    Separates URLs into two categories for clearer LLM presentation.
+
+    Args:
+        personality_profile: Persona's background/personality text
+        writing_rules: List of writing rules
+        thread_content: Combined thread title/body/comment text
+
+    Returns:
+        Tuple of (persona_urls, thread_urls)
+    """
+    persona_urls = []
+    thread_urls = []
+
+    # Extract from personality profile
+    if personality_profile:
+        persona_urls.extend(extract_markdown_links(personality_profile))
+
+    # Extract from writing rules
+    if writing_rules:
+        for rule in writing_rules:
+            persona_urls.extend(extract_markdown_links(rule))
+
+    # Extract from thread content
+    if thread_content:
+        thread_urls.extend(extract_markdown_links(thread_content))
+
+    return persona_urls, thread_urls
 
 
 # Token budget configuration
@@ -539,6 +623,40 @@ Use them as reference for tone, phrasing, and personality:\n\n"""
             thread_section += f"Parent Comment: {comment}...\n"
         thread_section += f"Subreddit: r/{thread.get('subreddit', 'unknown')}\n"
         sections.append(thread_section)
+
+        # 7. Available Reference URLs Section (for tool calling)
+        # Extract URLs from persona profile, writing rules, and thread content
+        thread_content = " ".join([
+            thread.get("title", ""),
+            thread.get("body", ""),
+            thread.get("comment", "")
+        ])
+
+        persona_urls, thread_urls = extract_urls_from_context(
+            personality_profile=personality_profile,
+            writing_rules=writing_rules,
+            thread_content=thread_content
+        )
+
+        # Only add section if there are URLs
+        if persona_urls or thread_urls:
+            urls_section = "# Available Reference URLs\n"
+            urls_section += """If any of these URLs are relevant to your response, you can use the
+fetch_url tool to read their content. Only fetch if the information would significantly
+improve your response.\n\n"""
+
+            if persona_urls:
+                urls_section += "From your background/persona:\n"
+                for link in persona_urls[:5]:  # Limit to 5 persona URLs
+                    urls_section += f'- "{link["description"]}" -> {link["url"]}\n'
+                urls_section += "\n"
+
+            if thread_urls:
+                urls_section += "From the current thread:\n"
+                for link in thread_urls[:5]:  # Limit to 5 thread URLs
+                    urls_section += f'- "{link["description"]}" -> {link["url"]}\n'
+
+            sections.append(urls_section)
 
         # Assemble final prompt
         prompt = "\n\n".join(sections)
