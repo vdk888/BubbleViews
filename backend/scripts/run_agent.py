@@ -92,8 +92,8 @@ Environment Variables:
     parser.add_argument(
         '--interval',
         type=int,
-        default=14400,
-        help='Seconds between perception cycles (default: 14400 = 4 hours)'
+        default=None,
+        help='Seconds between perception cycles (default: from AGENT_INTERVAL_SECONDS env var, or 14400 = 4 hours)'
     )
 
     parser.add_argument(
@@ -259,6 +259,9 @@ async def main():
         logger.error("Please create a persona in the dashboard first")
         sys.exit(1)
 
+    # Use interval from args, or fall back to settings, or use default
+    interval_seconds = args.interval if args.interval is not None else settings.agent_interval_seconds
+
     # Create agent loop
     agent_loop = AgentLoop(
         reddit_client=reddit_client,
@@ -266,7 +269,7 @@ async def main():
         memory_store=memory_store,
         retrieval=retrieval,
         moderation=moderation,
-        interval_seconds=args.interval,
+        interval_seconds=interval_seconds,
         max_posts_per_cycle=args.max_posts,
         response_probability=args.probability,
     )

@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     )
 
     # Agent Configuration
+    agent_interval_seconds: int = Field(
+        default=14400,
+        description="Seconds between agent perception cycles (default: 14400 = 4 hours)"
+    )
     target_subreddits: List[str] = Field(
         default=["test", "bottest"],
         description="List of subreddits the agent monitors"

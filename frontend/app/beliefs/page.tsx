@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { usePersona } from "@/hooks/usePersona";
-import { apiClient, BeliefGraphResponse, BeliefNode, BeliefHistoryResponse } from "@/lib/api-client";
+import { apiClient, BeliefGraphResponse, BeliefNode, BeliefHistoryResponse, RelationshipSuggestion } from "@/lib/api-client";
 import { BeliefGraphViz } from "@/components/BeliefGraphViz";
+import { BeliefListView } from "@/components/BeliefListView";
 
 export default function BeliefsPage() {
   const { selectedPersonaId } = usePersona();
@@ -13,6 +14,18 @@ export default function BeliefsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editConfidence, setEditConfidence] = useState<number | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // View mode toggle: "graph" or "list"
+  const [viewMode, setViewMode] = useState<"graph" | "list">("graph");
+
+  // Relationship suggestions state (for Phase 4 integration)
+  const [showSuggestionModal, setShowSuggestionModal] = useState(false);
+  const [suggestedRelationships, setSuggestedRelationships] = useState<RelationshipSuggestion[]>([]);
+  const [suggestingRelationships, setSuggestingRelationships] = useState(false);
 
   useEffect(() => {
     if (selectedPersonaId) {
@@ -57,10 +70,78 @@ export default function BeliefsPage() {
     }
   };
 
-  const handleNodeClick = (node: BeliefNode) => setSelectedBelief(node);
+  const handleNodeClick = (node: BeliefNode) => {
+    setSelectedBelief(node);
+    setEditMode(false);
+    setEditConfidence(null);
+    setUpdateMessage(null);
+  };
+
   const handleCloseDetail = () => {
     setSelectedBelief(null);
     setBeliefHistory(null);
+    setEditMode(false);
+    setEditConfidence(null);
+    setUpdateMessage(null);
+  };
+
+  const handleNudge = async (direction: "increase" | "decrease") => {
+    if (!selectedBelief || !selectedPersonaId) return;
+
+    try {
+      setUpdating(true);
+      setUpdateMessage(null);
+
+      await apiClient.nudgeBelief(selectedBelief.id, {
+        persona_id: selectedPersonaId,
+        direction,
+        amount: 0.05,
+        reason: `Manual ${direction} via dashboard`,
+      });
+
+      // Reload graph and history
+      await loadGraph();
+      await loadHistory(selectedBelief.id);
+      setUpdateMessage({ type: "success", text: `Confidence ${direction}d successfully` });
+      setTimeout(() => setUpdateMessage(null), 3000);
+    } catch (err) {
+      setUpdateMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to update belief",
+      });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleSaveConfidence = async () => {
+    if (!selectedBelief || !selectedPersonaId || editConfidence === null) return;
+
+    try {
+      setUpdating(true);
+      setUpdateMessage(null);
+
+      await apiClient.updateBelief(selectedBelief.id, {
+        persona_id: selectedPersonaId,
+        confidence: editConfidence,
+        rationale: "Manual confidence update via dashboard",
+      });
+
+      // Reload graph and history
+      await loadGraph();
+      await loadHistory(selectedBelief.id);
+      setEditMode(false);
+      setEditConfidence(null);
+      setUpdateMessage({ type: "success", text: "Belief updated successfully" });
+      setTimeout(() => setUpdateMessage(null), 3000);
+    } catch (err) {
+      setUpdateMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to update belief",
+      });
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const formatDate = (dateString: string | null) => {
@@ -73,6 +154,29 @@ export default function BeliefsPage() {
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
+  };
+
+  // Handler for suggesting relationships for a belief
+  const handleSuggestRelationships = async () => {
+    if (!selectedBelief || !selectedPersonaId) return;
+
+    try {
+      setSuggestingRelationships(true);
+      setUpdateMessage(null);
+      const suggestions = await apiClient.suggestRelationships(
+        selectedBelief.id,
+        selectedPersonaId
+      );
+      setSuggestedRelationships(suggestions);
+      setShowSuggestionModal(true);
+    } catch (err) {
+      setUpdateMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to get relationship suggestions",
+      });
+    } finally {
+      setSuggestingRelationships(false);
+    }
   };
 
   if (!selectedPersonaId) {
@@ -88,10 +192,36 @@ export default function BeliefsPage() {
   return (
     <div className="page-shell">
       <div className="mb-6">
-        <h1>Belief Graph</h1>
-        <p className="muted max-w-2xl">
-          Visualisation interactive et transparente du systeme de croyances de l'agent.
-        </p>
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <h1>Belief Graph</h1>
+            <p className="muted max-w-2xl">
+              Visualisation interactive et transparente du systeme de croyances de l'agent.
+            </p>
+          </div>
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={() => setViewMode("graph")}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                viewMode === "graph"
+                  ? "bg-[var(--primary)] text-white"
+                  : "bg-[var(--card)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
+              }`}
+            >
+              Graph View
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                viewMode === "list"
+                  ? "bg-[var(--primary)] text-white"
+                  : "bg-[var(--card)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
+              }`}
+            >
+              List View
+            </button>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -113,17 +243,21 @@ export default function BeliefsPage() {
       {!loading && graphData && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <div className="card p-6">
-              {graphData.nodes.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="muted">
-                    Aucune croyance pour le moment. L'agent n'a pas encore forme de position.
-                  </p>
-                </div>
-              ) : (
-                <BeliefGraphViz nodes={graphData.nodes} edges={graphData.edges} onNodeClick={handleNodeClick} />
-              )}
-            </div>
+            {viewMode === "graph" ? (
+              <div className="card p-6">
+                {graphData.nodes.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="muted">
+                      Aucune croyance pour le moment. L'agent n'a pas encore forme de position.
+                    </p>
+                  </div>
+                ) : (
+                  <BeliefGraphViz nodes={graphData.nodes} edges={graphData.edges} onNodeClick={handleNodeClick} />
+                )}
+              </div>
+            ) : (
+              <BeliefListView beliefs={graphData.nodes} onBeliefClick={handleNodeClick} />
+            )}
           </div>
 
           <div className="lg:col-span-1">
@@ -139,6 +273,18 @@ export default function BeliefsPage() {
                   </button>
                 </div>
 
+                {updateMessage && (
+                  <div
+                    className={`p-3 rounded text-sm font-semibold ${
+                      updateMessage.type === "success"
+                        ? "bg-green-100 text-green-700"
+                        : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {updateMessage.text}
+                  </div>
+                )}
+
                 <div>
                   <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-1">Title</h3>
                   <p className="text-[var(--primary)]">{selectedBelief.title}</p>
@@ -151,17 +297,99 @@ export default function BeliefsPage() {
 
                 <div>
                   <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">Confidence</h3>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-[var(--card)] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[var(--primary)]"
-                        style={{ width: `${(selectedBelief.confidence || 0) * 100}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-sm font-semibold text-[var(--primary)]">
-                      {((selectedBelief.confidence || 0) * 100).toFixed(0)}%
-                    </span>
-                  </div>
+                  {!editMode ? (
+                    <>
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="flex-1 h-2 bg-[var(--card)] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[var(--primary)]"
+                            style={{ width: `${(selectedBelief.confidence || 0) * 100}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-sm font-semibold text-[var(--primary)]">
+                          {((selectedBelief.confidence || 0) * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleNudge("decrease")}
+                          disabled={updating}
+                          className="flex-1 px-2 py-1 text-xs font-semibold rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
+                        >
+                          - Less confident
+                        </button>
+                        <button
+                          onClick={() => handleNudge("increase")}
+                          disabled={updating}
+                          className="flex-1 px-2 py-1 text-xs font-semibold rounded bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
+                        >
+                          + More confident
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditMode(true);
+                            setEditConfidence(selectedBelief.confidence || 0.5);
+                          }}
+                          className="flex-1 px-2 py-1 text-xs font-semibold rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={editConfidence || 0}
+                          onChange={(e) => setEditConfidence(parseFloat(e.target.value))}
+                          className="w-full"
+                          disabled={updating}
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-[var(--primary)]">
+                            {((editConfidence || 0) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={handleSaveConfidence}
+                          disabled={updating || editConfidence === null}
+                          className="flex-1 px-2 py-1 text-xs font-semibold rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditMode(false);
+                            setEditConfidence(null);
+                          }}
+                          disabled={updating}
+                          className="flex-1 px-2 py-1 text-xs font-semibold rounded bg-gray-300 text-gray-700 hover:bg-gray-400 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Suggest Relationships Button */}
+                <div>
+                  <button
+                    onClick={handleSuggestRelationships}
+                    disabled={updating || suggestingRelationships}
+                    className="w-full px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  >
+                    {suggestingRelationships ? "Analyzing..." : "Suggest Relationships"}
+                  </button>
+                  <p className="text-xs text-[var(--text-secondary)] mt-1">
+                    Use AI to find connections with other beliefs
+                  </p>
                 </div>
 
                 {selectedBelief.tags && selectedBelief.tags.length > 0 && (

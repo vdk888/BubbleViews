@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class BeliefNodeModel(BaseModel):
@@ -98,3 +98,96 @@ class BeliefUpdateResponse(BaseModel):
     new_confidence: float
     status: str
     message: str
+
+
+# ============================================================================
+# Belief Creation Schemas
+# ============================================================================
+
+class BeliefCreateRequest(BaseModel):
+    """Request to create a new belief."""
+    persona_id: str
+    title: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Brief title/summary of the belief (max 500 chars)"
+    )
+    summary: str = Field(
+        ...,
+        min_length=1,
+        description="Detailed description of the belief"
+    )
+    confidence: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Initial confidence level (0.0-1.0)"
+    )
+    tags: List[str] = Field(
+        default_factory=list,
+        description="List of tags for categorization"
+    )
+    auto_link: bool = Field(
+        default=True,
+        description="If True, suggest relationships with existing beliefs"
+    )
+
+
+class RelationshipSuggestion(BaseModel):
+    """Suggestion for a relationship between beliefs."""
+    target_belief_id: str = Field(
+        ...,
+        description="UUID of the related belief"
+    )
+    target_belief_title: str = Field(
+        ...,
+        description="Title of the related belief"
+    )
+    relation: str = Field(
+        ...,
+        pattern="^(supports|contradicts|depends_on|evidence_for)$",
+        description="Type of relationship (supports, contradicts, depends_on, evidence_for)"
+    )
+    weight: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Strength of relationship (0.0-1.0)"
+    )
+    reasoning: str = Field(
+        ...,
+        description="Brief explanation for the suggested relationship"
+    )
+
+
+class BeliefCreateResponse(BaseModel):
+    """Response after creating a new belief."""
+    belief_id: str = Field(
+        ...,
+        description="UUID of the newly created belief"
+    )
+    suggested_relationships: List[RelationshipSuggestion] = Field(
+        default_factory=list,
+        description="List of suggested relationships with existing beliefs"
+    )
+
+
+class RelationshipCreateRequest(BaseModel):
+    """Request to create a relationship between beliefs."""
+    persona_id: str
+    target_belief_id: str = Field(
+        ...,
+        description="UUID of the target belief"
+    )
+    relation: str = Field(
+        ...,
+        pattern="^(supports|contradicts|depends_on|evidence_for)$",
+        description="Type of relationship (supports, contradicts, depends_on, evidence_for)"
+    )
+    weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Strength of relationship (0.0-1.0)"
+    )

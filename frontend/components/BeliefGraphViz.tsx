@@ -40,15 +40,21 @@ export function BeliefGraphViz({ nodes, edges, onNodeClick }: BeliefGraphVizProp
       return;
     }
 
-    // Create nodes with random initial positions
-    const newNodes: GraphNode[] = nodes.map((node) => ({
-      id: node.id,
-      x: Math.random() * width,
-      y: Math.random() * height,
-      vx: 0,
-      vy: 0,
-      data: node,
-    }));
+    // Create nodes with better initial positions using circular layout
+    const newNodes: GraphNode[] = nodes.map((node, i) => {
+      const angle = (i / nodes.length) * 2 * Math.PI;
+      const radius = Math.min(width, height) / 3;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      return {
+        id: node.id,
+        x: centerX + radius * Math.cos(angle),
+        y: centerY + radius * Math.sin(angle),
+        vx: 0,
+        vy: 0,
+        data: node,
+      };
+    });
 
     const newEdges: GraphEdge[] = edges.map((edge) => ({
       source: edge.source_id,
@@ -78,18 +84,19 @@ export function BeliefGraphViz({ nodes, edges, onNodeClick }: BeliefGraphVizProp
         let fx = 0;
         let fy = 0;
 
-        // Repulsion from other nodes
+        // Repulsion from other nodes - increased for better spacing
         graphNodes.forEach((other) => {
           if (node.id === other.id) return;
           const dx = node.x - other.x;
           const dy = node.y - other.y;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = 100 / (dist * dist);
+          // Increased repulsion force (was 100, now 250)
+          const force = 250 / (dist * dist);
           fx += (dx / dist) * force;
           fy += (dy / dist) * force;
         });
 
-        // Attraction along edges
+        // Attraction along edges - adjusted for better balance
         graphEdges.forEach((edge) => {
           let other: GraphNode | undefined;
           let sign = 1;
@@ -105,22 +112,23 @@ export function BeliefGraphViz({ nodes, edges, onNodeClick }: BeliefGraphVizProp
             const dx = other.x - node.x;
             const dy = other.y - node.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            const force = dist * 0.001;
+            // Adjusted attraction (was 0.001, now 0.0005)
+            const force = dist * 0.0005;
             fx += (dx / dist) * force * sign;
             fy += (dy / dist) * force * sign;
           }
         });
 
-        // Center gravity
-        fx += (width / 2 - node.x) * 0.0001;
-        fy += (height / 2 - node.y) * 0.0001;
+        // Center gravity - adjusted to be gentler
+        fx += (width / 2 - node.x) * 0.00005;
+        fy += (height / 2 - node.y) * 0.00005;
 
-        // Update velocity and position
-        const damping = 0.85;
+        // Update velocity and position with better damping
+        const damping = 0.92;
         const newVx = (node.vx + fx) * damping;
         const newVy = (node.vy + fy) * damping;
-        const newX = Math.max(30, Math.min(width - 30, node.x + newVx));
-        const newY = Math.max(30, Math.min(height - 30, node.y + newVy));
+        const newX = Math.max(35, Math.min(width - 35, node.x + newVx));
+        const newY = Math.max(35, Math.min(height - 35, node.y + newVy));
 
         return { ...node, vx: newVx, vy: newVy, x: newX, y: newY };
       });

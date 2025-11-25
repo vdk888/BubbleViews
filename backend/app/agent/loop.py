@@ -53,7 +53,7 @@ class AgentLoop:
         memory_store: IMemoryStore,
         retrieval: RetrievalCoordinator,
         moderation: ModerationService,
-        interval_seconds: int = 60,
+        interval_seconds: int = 14400,
         max_posts_per_cycle: int = 5,
         response_probability: float = 0.3,
     ):
@@ -66,7 +66,7 @@ class AgentLoop:
             memory_store: Memory store for interactions and beliefs
             retrieval: Retrieval coordinator for context assembly
             moderation: Moderation service for content evaluation
-            interval_seconds: Seconds between perception cycles (default: 60)
+            interval_seconds: Seconds between perception cycles (default: 14400 = 4 hours)
             max_posts_per_cycle: Max posts to process per cycle (default: 5)
             response_probability: Probability of responding to eligible posts (default: 0.3)
         """
@@ -795,7 +795,7 @@ async def run_agent(
     retrieval: RetrievalCoordinator,
     moderation: ModerationService,
     stop_event: Optional[asyncio.Event] = None,
-    interval_seconds: int = 60
+    interval_seconds: int = 14400
 ) -> None:
     """
     Convenience function to run agent loop.
@@ -808,7 +808,7 @@ async def run_agent(
         retrieval: Retrieval coordinator instance
         moderation: Moderation service instance
         stop_event: Optional stop event
-        interval_seconds: Seconds between cycles
+        interval_seconds: Seconds between cycles (default: 14400 = 4 hours)
 
     Raises:
         ValueError: If persona not found or dependencies invalid

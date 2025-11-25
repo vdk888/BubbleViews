@@ -5,6 +5,7 @@ Provides endpoints for persona management including listing and creation
 to support dashboard persona selection and multi-persona operations.
 """
 
+import logging
 from typing import List, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,6 +21,9 @@ from app.schemas.persona import (
     PersonaCreateRequest,
     PersonaCreateResponse
 )
+from app.services.belief_seeder import BeliefSeeder
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["personas"])
 
@@ -152,14 +156,19 @@ async def get_persona(
 async def create_persona(
     request: PersonaCreateRequest,
     current_user: CurrentActiveUser,
+    db: DatabaseSession,
     repo: PersonaRepo
 ) -> PersonaCreateResponse:
     """
-    Create a new persona.
+    Create a new persona and auto-seed it with core beliefs.
+
+    Creates a persona and immediately seeds it with a default belief graph,
+    ensuring the agent starts with core convictions ready to evolve.
 
     Args:
         request: Persona creation request with username, display name, config
         current_user: Authenticated user (from dependency)
+        db: Database session (from dependency)
         repo: PersonaRepository instance (from dependency)
 
     Returns:
@@ -169,14 +178,15 @@ async def create_persona(
         HTTPException 400: If validation fails
         HTTPException 401: If not authenticated
         HTTPException 409: If reddit_username already exists
+        HTTPException 500: If belief seeding fails
 
     Security:
         - Requires valid JWT token
         - Username uniqueness enforced at database level
 
     Note:
-        Config is serialized to JSON and stored in the database.
-        Default configuration is used if not provided.
+        Persona is created and beliefs are seeded in a single transaction.
+        If belief seeding fails, the entire operation rolls back.
     """
     try:
         # Create persona using repository
@@ -185,6 +195,44 @@ async def create_persona(
             display_name=request.display_name,
             config=request.config.model_dump() if request.config else None
         )
+
+        logger.info(
+            f"Persona created: {request.reddit_username}",
+            extra={"persona_id": persona.id}
+        )
+
+        # Seed persona with default beliefs
+        try:
+            seeder = BeliefSeeder()
+            beliefs_count, edges_count = await seeder.seed_persona_beliefs(
+                session=db,
+                persona_id=persona.id
+            )
+
+            logger.info(
+                f"Belief seeding completed for persona {request.reddit_username}",
+                extra={
+                    "persona_id": persona.id,
+                    "beliefs_created": beliefs_count,
+                    "edges_created": edges_count,
+                }
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to seed beliefs for persona {request.reddit_username}: {e}",
+                extra={"persona_id": persona.id},
+                exc_info=True
+            )
+            # Don't fail persona creation if belief seeding fails
+            # This is a non-critical enhancement
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Persona created but belief seeding failed: {str(e)}"
+            )
+
+        # Commit transaction
+        await db.commit()
 
         # Parse config from JSON for response
         config_dict = persona.get_config()
@@ -208,12 +256,22 @@ async def create_persona(
 
     except ValueError as e:
         # Username conflict or validation error
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(e)
         )
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        await db.rollback()
+        raise
     except Exception as e:
         # Unexpected error
+        await db.rollback()
+        logger.exception(
+            f"Unexpected error creating persona: {e}",
+            extra={"username": request.reddit_username}
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to create persona: {str(e)}"

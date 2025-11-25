@@ -153,6 +153,36 @@ export interface BeliefLockRequest {
   reason?: string;
 }
 
+// New types for belief creation and relationship management
+export interface BeliefCreateRequest {
+  persona_id: string;
+  title: string;
+  summary: string;
+  confidence?: number;
+  tags?: string[];
+  auto_link?: boolean;
+}
+
+export interface BeliefCreateResponse {
+  belief_id: string;
+  suggested_relationships: RelationshipSuggestion[];
+}
+
+export interface RelationshipSuggestion {
+  target_belief_id: string;
+  target_belief_title: string;
+  relation: string;
+  weight: number;
+  reasoning: string;
+}
+
+export interface RelationshipCreateRequest {
+  persona_id: string;
+  target_belief_id: string;
+  relation: string;
+  weight?: number;
+}
+
 export interface BeliefUpdateResponse {
   belief_id: string;
   old_confidence: number;
@@ -299,7 +329,7 @@ class ApiClient {
 
   // Belief endpoints
   async getBeliefGraph(persona_id: string): Promise<BeliefGraphResponse> {
-    return this.request(`/api/v1/belief-graph?persona_id=${persona_id}`);
+    return this.request(`/api/v1/beliefs?persona_id=${persona_id}`);
   }
 
   async getBeliefHistory(belief_id: string, persona_id: string): Promise<BeliefHistoryResponse> {

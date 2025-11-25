@@ -1,15 +1,35 @@
 """
 Belief graph and history endpoints.
+
+Provides CRUD operations for belief management:
+- GET /beliefs - Query belief graph
+- GET /beliefs/{belief_id}/history - Get belief history
+- POST /beliefs - Create new belief with optional auto-linking
+- PUT /beliefs/{belief_id} - Update belief
+- POST /beliefs/{belief_id}/relationships - Create relationship
+- DELETE /beliefs/{belief_id}/relationships/{edge_id} - Delete relationship
+- POST /beliefs/{belief_id}/suggest-relationships - Get relationship suggestions
+- POST /beliefs/{belief_id}/lock - Lock belief stance
+- POST /beliefs/{belief_id}/unlock - Unlock belief stance
+- POST /beliefs/{belief_id}/nudge - Nudge belief confidence
 """
 
+import json
 import logging
-from typing import Optional
+import uuid
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select, and_
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, get_llm_client
+from app.core.database import async_session_maker
+from app.models.belief import BeliefNode, BeliefEdge, StanceVersion
+from app.models.persona import Persona
 from app.services.memory_store import SQLiteMemoryStore
 from app.services.belief_updater import BeliefUpdater
+from app.services.relationship_suggester import suggest_relationships
+from app.services.interfaces.llm_client import ILLMClient
 from app.schemas.beliefs import (
     BeliefGraphResponse,
     BeliefHistoryResponse,
@@ -18,6 +38,10 @@ from app.schemas.beliefs import (
     BeliefNudgeRequest,
     BeliefLockRequest,
     BeliefUnlockRequest,
+    BeliefCreateRequest,
+    BeliefCreateResponse,
+    RelationshipSuggestion,
+    RelationshipCreateRequest,
 )
 
 router = APIRouter()
@@ -268,3 +292,494 @@ async def nudge_belief(
     except Exception as e:
         logger.exception(f"Unexpected error nudging belief: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ============================================================================
+# Belief Creation and Relationship Management Endpoints
+# ============================================================================
+
+
+@router.post(
+    "/beliefs",
+    response_model=BeliefCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create new belief",
+    description="Create a new belief node with optional auto-linking to existing beliefs.",
+)
+async def create_belief(
+    request: BeliefCreateRequest,
+    current_user=Depends(get_current_user),  # noqa: ANN001
+    llm_client: ILLMClient = Depends(get_llm_client),
+) -> BeliefCreateResponse:
+    """
+    Create a new belief in the persona's knowledge graph.
+
+    This endpoint creates a new belief node with an initial stance version.
+    If auto_link is True, it will use LLM to suggest relationships with
+    existing beliefs (but does NOT automatically create edges).
+
+    Args:
+        request: BeliefCreateRequest with persona_id, title, summary, etc.
+        current_user: Authenticated user
+        llm_client: LLM client for relationship suggestions
+
+    Returns:
+        BeliefCreateResponse with belief_id and suggested_relationships
+
+    Raises:
+        400: Validation error
+        404: Persona not found
+        500: Internal server error
+    """
+    correlation_id = str(uuid.uuid4())
+
+    logger.info(
+        "Creating new belief",
+        extra={
+            "correlation_id": correlation_id,
+            "persona_id": request.persona_id,
+            "title": request.title[:50],
+            "auto_link": request.auto_link
+        }
+    )
+
+    try:
+        async with async_session_maker() as session:
+            async with session.begin():
+                # 1. Validate persona exists
+                stmt = select(Persona).where(Persona.id == request.persona_id)
+                result = await session.execute(stmt)
+                persona = result.scalar_one_or_none()
+
+                if not persona:
+                    logger.warning(
+                        "Persona not found for belief creation",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "persona_id": request.persona_id
+                        }
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Persona {request.persona_id} not found"
+                    )
+
+                # 2. Create BeliefNode
+                belief_id = str(uuid.uuid4())
+                belief_node = BeliefNode(
+                    id=belief_id,
+                    persona_id=request.persona_id,
+                    title=request.title,
+                    summary=request.summary,
+                    current_confidence=request.confidence,
+                )
+                belief_node.set_tags(request.tags)
+                session.add(belief_node)
+
+                # 3. Create initial StanceVersion
+                stance_id = str(uuid.uuid4())
+                stance = StanceVersion(
+                    id=stance_id,
+                    persona_id=request.persona_id,
+                    belief_id=belief_id,
+                    text=request.summary,
+                    confidence=request.confidence,
+                    status="current",
+                    rationale="Initial belief creation",
+                )
+                session.add(stance)
+
+                await session.flush()
+
+                logger.info(
+                    "Belief created successfully",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "belief_id": belief_id,
+                        "persona_id": request.persona_id
+                    }
+                )
+
+        # 4. Get relationship suggestions if auto_link is True
+        suggested_relationships: List[RelationshipSuggestion] = []
+
+        if request.auto_link:
+            # Fetch existing beliefs for this persona
+            graph = await memory_store.query_belief_graph(
+                persona_id=request.persona_id,
+                min_confidence=0.0  # Include all beliefs
+            )
+
+            existing_beliefs = [
+                node for node in graph.get("nodes", [])
+                if node.get("id") != belief_id  # Exclude the just-created belief
+            ]
+
+            if existing_beliefs:
+                suggested_relationships = await suggest_relationships(
+                    persona_id=request.persona_id,
+                    belief_title=request.title,
+                    belief_summary=request.summary,
+                    existing_beliefs=existing_beliefs,
+                    llm_client=llm_client,
+                    max_suggestions=5,
+                    correlation_id=correlation_id
+                )
+
+                logger.info(
+                    "Relationship suggestions generated",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "belief_id": belief_id,
+                        "suggestion_count": len(suggested_relationships)
+                    }
+                )
+
+        return BeliefCreateResponse(
+            belief_id=belief_id,
+            suggested_relationships=suggested_relationships
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            f"Unexpected error creating belief: {e}",
+            extra={"correlation_id": correlation_id}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+@router.post(
+    "/beliefs/{belief_id}/relationships",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create relationship",
+    description="Create a relationship (edge) between two beliefs.",
+)
+async def create_relationship(
+    belief_id: str,
+    request: RelationshipCreateRequest,
+    current_user=Depends(get_current_user),  # noqa: ANN001
+):
+    """
+    Create a relationship between the source belief and target belief.
+
+    This endpoint creates an edge in the belief graph connecting two beliefs.
+    Both beliefs must exist and belong to the same persona.
+
+    Args:
+        belief_id: UUID of the source belief
+        request: RelationshipCreateRequest with target_belief_id, relation, weight
+        current_user: Authenticated user
+
+    Returns:
+        Dict with edge_id and status
+
+    Raises:
+        400: Validation error (same belief, invalid relation)
+        404: Belief not found
+        500: Internal server error
+    """
+    correlation_id = str(uuid.uuid4())
+
+    logger.info(
+        "Creating belief relationship",
+        extra={
+            "correlation_id": correlation_id,
+            "source_belief_id": belief_id,
+            "target_belief_id": request.target_belief_id,
+            "relation": request.relation
+        }
+    )
+
+    # Validate not linking to self
+    if belief_id == request.target_belief_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot create relationship to the same belief"
+        )
+
+    try:
+        async with async_session_maker() as session:
+            async with session.begin():
+                # 1. Validate source belief exists
+                stmt = select(BeliefNode).where(
+                    and_(
+                        BeliefNode.id == belief_id,
+                        BeliefNode.persona_id == request.persona_id
+                    )
+                )
+                result = await session.execute(stmt)
+                source_belief = result.scalar_one_or_none()
+
+                if not source_belief:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Source belief {belief_id} not found for persona {request.persona_id}"
+                    )
+
+                # 2. Validate target belief exists
+                stmt = select(BeliefNode).where(
+                    and_(
+                        BeliefNode.id == request.target_belief_id,
+                        BeliefNode.persona_id == request.persona_id
+                    )
+                )
+                result = await session.execute(stmt)
+                target_belief = result.scalar_one_or_none()
+
+                if not target_belief:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Target belief {request.target_belief_id} not found for persona {request.persona_id}"
+                    )
+
+                # 3. Create BeliefEdge
+                edge_id = str(uuid.uuid4())
+                edge = BeliefEdge(
+                    id=edge_id,
+                    persona_id=request.persona_id,
+                    source_id=belief_id,
+                    target_id=request.target_belief_id,
+                    relation=request.relation,
+                    weight=request.weight,
+                )
+                session.add(edge)
+
+                await session.flush()
+
+                logger.info(
+                    "Relationship created successfully",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "edge_id": edge_id,
+                        "source_id": belief_id,
+                        "target_id": request.target_belief_id,
+                        "relation": request.relation
+                    }
+                )
+
+        return {
+            "edge_id": edge_id,
+            "status": "created",
+            "message": "Relationship created successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            f"Unexpected error creating relationship: {e}",
+            extra={"correlation_id": correlation_id}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+@router.delete(
+    "/beliefs/{belief_id}/relationships/{edge_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete relationship",
+    description="Delete a relationship (edge) between beliefs.",
+)
+async def delete_relationship(
+    belief_id: str,
+    edge_id: str,
+    persona_id: str,
+    current_user=Depends(get_current_user),  # noqa: ANN001
+):
+    """
+    Delete a relationship (edge) from the belief graph.
+
+    The edge must exist and belong to the specified persona.
+
+    Args:
+        belief_id: UUID of the source belief
+        edge_id: UUID of the edge to delete
+        persona_id: UUID of the persona (query param)
+        current_user: Authenticated user
+
+    Returns:
+        204 No Content on success
+
+    Raises:
+        404: Edge not found
+        500: Internal server error
+    """
+    correlation_id = str(uuid.uuid4())
+
+    logger.info(
+        "Deleting belief relationship",
+        extra={
+            "correlation_id": correlation_id,
+            "belief_id": belief_id,
+            "edge_id": edge_id,
+            "persona_id": persona_id
+        }
+    )
+
+    try:
+        async with async_session_maker() as session:
+            async with session.begin():
+                # Find and delete the edge
+                stmt = select(BeliefEdge).where(
+                    and_(
+                        BeliefEdge.id == edge_id,
+                        BeliefEdge.source_id == belief_id,
+                        BeliefEdge.persona_id == persona_id
+                    )
+                )
+                result = await session.execute(stmt)
+                edge = result.scalar_one_or_none()
+
+                if not edge:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Edge {edge_id} not found for belief {belief_id}"
+                    )
+
+                await session.delete(edge)
+
+                logger.info(
+                    "Relationship deleted successfully",
+                    extra={
+                        "correlation_id": correlation_id,
+                        "edge_id": edge_id
+                    }
+                )
+
+        return None  # 204 No Content
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            f"Unexpected error deleting relationship: {e}",
+            extra={"correlation_id": correlation_id}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+@router.post(
+    "/beliefs/{belief_id}/suggest-relationships",
+    response_model=List[RelationshipSuggestion],
+    summary="Suggest relationships",
+    description="Get LLM-powered relationship suggestions for an existing belief.",
+)
+async def suggest_relationships_for_belief(
+    belief_id: str,
+    persona_id: str,
+    current_user=Depends(get_current_user),  # noqa: ANN001
+    llm_client: ILLMClient = Depends(get_llm_client),
+) -> List[RelationshipSuggestion]:
+    """
+    Get relationship suggestions for an existing belief.
+
+    Uses LLM to analyze the belief and suggest meaningful relationships
+    with other beliefs in the persona's knowledge graph.
+
+    Args:
+        belief_id: UUID of the belief to get suggestions for
+        persona_id: UUID of the persona (query param)
+        current_user: Authenticated user
+        llm_client: LLM client for generating suggestions
+
+    Returns:
+        List of RelationshipSuggestion objects
+
+    Raises:
+        404: Belief not found
+        500: Internal server error
+    """
+    correlation_id = str(uuid.uuid4())
+
+    logger.info(
+        "Suggesting relationships for existing belief",
+        extra={
+            "correlation_id": correlation_id,
+            "belief_id": belief_id,
+            "persona_id": persona_id
+        }
+    )
+
+    try:
+        # 1. Fetch the belief
+        belief_data = await memory_store.get_belief_with_stances(
+            persona_id=persona_id,
+            belief_id=belief_id
+        )
+
+        belief = belief_data["belief"]
+
+        # 2. Fetch all other beliefs for this persona
+        graph = await memory_store.query_belief_graph(
+            persona_id=persona_id,
+            min_confidence=0.0  # Include all beliefs
+        )
+
+        existing_beliefs = [
+            node for node in graph.get("nodes", [])
+            if node.get("id") != belief_id  # Exclude the target belief
+        ]
+
+        if not existing_beliefs:
+            logger.info(
+                "No other beliefs to suggest relationships with",
+                extra={
+                    "correlation_id": correlation_id,
+                    "belief_id": belief_id
+                }
+            )
+            return []
+
+        # 3. Get suggestions from LLM
+        suggestions = await suggest_relationships(
+            persona_id=persona_id,
+            belief_title=belief["title"],
+            belief_summary=belief["summary"],
+            existing_beliefs=existing_beliefs,
+            llm_client=llm_client,
+            max_suggestions=5,
+            correlation_id=correlation_id
+        )
+
+        logger.info(
+            "Relationship suggestions generated for existing belief",
+            extra={
+                "correlation_id": correlation_id,
+                "belief_id": belief_id,
+                "suggestion_count": len(suggestions)
+            }
+        )
+
+        return suggestions
+
+    except ValueError as e:
+        logger.error(
+            f"Belief not found: {e}",
+            extra={
+                "correlation_id": correlation_id,
+                "belief_id": belief_id
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.exception(
+            f"Unexpected error suggesting relationships: {e}",
+            extra={"correlation_id": correlation_id}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )

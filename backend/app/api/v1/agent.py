@@ -20,7 +20,7 @@ router = APIRouter()
 class AgentStartRequest(BaseModel):
     """Request to start an agent loop."""
     persona_id: str = Field(..., description="UUID of the persona to start agent for")
-    interval_seconds: int = Field(60, ge=10, le=600, description="Seconds between perception cycles (10-600)")
+    interval_seconds: int | None = Field(None, ge=10, le=86400, description="Seconds between perception cycles (10-86400, optional - uses AGENT_INTERVAL_SECONDS env var or 14400 = 4 hours)")
     max_posts_per_cycle: int = Field(5, ge=1, le=20, description="Max posts to process per cycle (1-20)")
     response_probability: float = Field(0.3, ge=0.0, le=1.0, description="Probability of responding to eligible posts (0.0-1.0)")
 
@@ -28,7 +28,7 @@ class AgentStartRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "persona_id": "123e4567-e89b-12d3-a456-426614174000",
-                "interval_seconds": 60,
+                "interval_seconds": 14400,
                 "max_posts_per_cycle": 5,
                 "response_probability": 0.3
             }
@@ -111,7 +111,7 @@ AgentManagerDep = Annotated[AgentManager, Depends(get_agent_manager)]
     - Agent loop includes perception, decision, retrieval, generation, consistency check, moderation, and action phases
 
     **Configuration Parameters:**
-    - `interval_seconds`: How often to check for new posts (10-600 seconds, default: 60)
+    - `interval_seconds`: How often to check for new posts (10-86400 seconds, optional - defaults to AGENT_INTERVAL_SECONDS env var or 14400 = 4 hours)
     - `max_posts_per_cycle`: Max posts to process per cycle (1-20, default: 5)
     - `response_probability`: Random sampling rate for eligible posts (0.0-1.0, default: 0.3)
 
@@ -119,7 +119,16 @@ AgentManagerDep = Annotated[AgentManager, Depends(get_agent_manager)]
     ```json
     {
         "persona_id": "123e4567-e89b-12d3-a456-426614174000",
-        "interval_seconds": 60,
+        "max_posts_per_cycle": 5,
+        "response_probability": 0.3
+    }
+    ```
+
+    Or with optional interval override:
+    ```json
+    {
+        "persona_id": "123e4567-e89b-12d3-a456-426614174000",
+        "interval_seconds": 3600,
         "max_posts_per_cycle": 5,
         "response_probability": 0.3
     }

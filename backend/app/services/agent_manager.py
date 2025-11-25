@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Dict, Optional, Any
 from dataclasses import dataclass
 
+from app.core.config import settings
 from app.core.database import async_session_maker
 from app.services.reddit_client import AsyncPRAWClient
 from app.services.llm_client import OpenRouterClient
@@ -144,7 +145,7 @@ class AgentManager:
     async def start_agent(
         self,
         persona_id: str,
-        interval_seconds: int = 60,
+        interval_seconds: int = None,
         max_posts_per_cycle: int = 5,
         response_probability: float = 0.3
     ) -> Dict[str, Any]:
@@ -156,7 +157,7 @@ class AgentManager:
 
         Args:
             persona_id: UUID of persona to run agent for
-            interval_seconds: Seconds between perception cycles (default: 60)
+            interval_seconds: Seconds between perception cycles (default: from AGENT_INTERVAL_SECONDS env var, or 14400 = 4 hours)
             max_posts_per_cycle: Max posts to process per cycle (default: 5)
             response_probability: Probability of responding to eligible posts (default: 0.3)
 
@@ -171,6 +172,10 @@ class AgentManager:
             ValueError: If persona not found or invalid
             ConnectionError: If services fail to initialize
         """
+        # Use settings value if interval_seconds not provided
+        if interval_seconds is None:
+            interval_seconds = settings.agent_interval_seconds
+
         # Check if already running
         if persona_id in self._running_tasks:
             task = self._running_tasks[persona_id]
