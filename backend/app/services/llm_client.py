@@ -96,9 +96,10 @@ class OpenRouterClient(ILLMClient):
         temperature: float = 0.7,
         max_tokens: int = 500,
         correlation_id: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> Dict:
         """
-        Generate response using GPT-5.1-mini (fast, cheap).
+        Generate response using configured LLM model (default: GPT-5.1-mini).
 
         Uses exponential backoff retry logic for rate limits and transient errors.
 
@@ -110,6 +111,7 @@ class OpenRouterClient(ILLMClient):
             temperature: Sampling temperature (0-1, default 0.7 for drafting)
             max_tokens: Maximum tokens in response (default 500)
             correlation_id: Optional request ID for tracing
+            model: Optional model override (default: self.response_model)
 
         Returns:
             Dict with:
@@ -125,11 +127,14 @@ class OpenRouterClient(ILLMClient):
         if correlation_id is None:
             correlation_id = str(uuid.uuid4())
 
+        # Use provided model or fall back to default
+        model_to_use = model or self.response_model
+
         logger.info(
             "Generating response",
             extra={
                 "correlation_id": correlation_id,
-                "model": self.response_model,
+                "model": model_to_use,
                 "system_prompt_length": len(system_prompt),
                 "user_message_length": len(user_message),
                 "temperature": temperature,
@@ -148,7 +153,7 @@ class OpenRouterClient(ILLMClient):
 
         try:
             response = await self._call_with_retry(
-                model=self.response_model,
+                model=model_to_use,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,

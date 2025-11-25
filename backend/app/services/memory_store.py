@@ -112,6 +112,10 @@ class SQLiteMemoryStore(IMemoryStore):
             raise ValueError(f"min_confidence must be between 0.0 and 1.0, got {min_confidence}")
 
         async with self._get_session() as session:
+            # Expire cached objects to ensure we see fresh data from database
+            # Required because StaticPool reuses connections with identity map caching
+            session.expire_all()
+
             # Build query for belief nodes
             stmt = select(BeliefNode).where(BeliefNode.persona_id == persona_id)
 

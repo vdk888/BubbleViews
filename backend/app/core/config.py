@@ -73,12 +73,16 @@ class Settings(BaseSettings):
 
     # Model Selection (can switch without code changes)
     response_model: str = Field(
-        default="openai/gpt-5.1-mini",
+        default="openai/gpt-5-mini",
         description="Primary model for generating responses (fast, cheap)"
     )
     consistency_model: str = Field(
-        default="anthropic/claude-4.5-haiku",
+        default="anthropic/claude-haiku-4.5",
         description="Secondary model for consistency checks (accurate, cheap)"
+    )
+    relationship_model: str = Field(
+        default="anthropic/claude-haiku-4.5",
+        description="Model for intelligent relationship suggestions between beliefs"
     )
 
     # Agent Configuration

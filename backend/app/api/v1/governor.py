@@ -106,7 +106,7 @@ async def query_governor_endpoint(
             extra={
                 "persona_id": request.persona_id,
                 "question": request.question,
-                "user_id": current_user.id
+                "user": current_user.username
             }
         )
 
@@ -186,7 +186,7 @@ async def approve_proposal_endpoint(
                 "persona_id": request.persona_id,
                 "belief_id": request.belief_id,
                 "approved": request.approved,
-                "user_id": current_user.id
+                "user": current_user.username
             }
         )
 
@@ -241,7 +241,7 @@ async def approve_proposal_endpoint(
                 "new_stance_id": new_stance_id,
                 "old_confidence": current_stance["confidence"] if current_stance else None,
                 "new_confidence": request.proposed_confidence,
-                "user_id": current_user.id
+                "user": current_user.username
             }
         )
 

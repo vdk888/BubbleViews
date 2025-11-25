@@ -458,7 +458,7 @@ async def query_governor(
         context=context,
         user_message=question,
         temperature=0.5,  # Moderate creativity
-        max_tokens=800  # Allow detailed explanations
+        max_tokens=2000  # Allow detailed explanations (context is large)
     )
 
     # Extract proposal if present

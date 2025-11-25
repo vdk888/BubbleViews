@@ -668,7 +668,7 @@ async def delete_relationship(
         )
 
 
-@router.post(
+@router.get(
     "/beliefs/{belief_id}/suggest-relationships",
     response_model=List[RelationshipSuggestion],
     summary="Suggest relationships",
@@ -685,6 +685,8 @@ async def suggest_relationships_for_belief(
 
     Uses LLM to analyze the belief and suggest meaningful relationships
     with other beliefs in the persona's knowledge graph.
+
+    This is a GET endpoint that fetches suggestions without modifying state.
 
     Args:
         belief_id: UUID of the belief to get suggestions for

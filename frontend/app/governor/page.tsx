@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { usePersona } from '@/hooks/usePersona';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -20,10 +21,10 @@ interface BeliefProposal {
 }
 
 export default function GovernorPage() {
+  const { selectedPersonaId } = usePersona();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
   const [activeProposal, setActiveProposal] = useState<BeliefProposal | null>(null);
 
   const suggestions = [
@@ -44,10 +45,12 @@ export default function GovernorPage() {
     setInput('');
 
     try {
-      const response = await fetch('/api/v1/governor/query', {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const response = await fetch('http://localhost:8000/api/v1/governor/query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           persona_id: selectedPersonaId,
@@ -92,10 +95,12 @@ export default function GovernorPage() {
     if (!activeProposal || !selectedPersonaId) return;
 
     try {
-      const response = await fetch('/api/v1/governor/approve-proposal', {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const response = await fetch('http://localhost:8000/api/v1/governor/approve-proposal', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           persona_id: selectedPersonaId,
@@ -124,14 +129,6 @@ export default function GovernorPage() {
       alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
-
-  // Get persona from localStorage or context (simplified for MVP)
-  useEffect(() => {
-    const stored = localStorage.getItem('selectedPersonaId');
-    if (stored) {
-      setSelectedPersonaId(stored);
-    }
-  }, []);
 
   return (
     <div className="container mx-auto max-w-4xl p-6">
@@ -195,7 +192,7 @@ export default function GovernorPage() {
                 </span>
               )}
             </div>
-            <div className="prose prose-sm max-w-none text-[var(--text-primary)]">
+            <div className="prose prose-sm max-w-none text-[var(--text-primary)] prose-p:text-[var(--text-primary)] prose-strong:text-[var(--text-primary)] prose-li:text-[var(--text-primary)]">
               <ReactMarkdown>{msg.content}</ReactMarkdown>
             </div>
             {msg.sources && msg.sources.length > 0 && (

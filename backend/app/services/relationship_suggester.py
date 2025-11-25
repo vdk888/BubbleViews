@@ -15,6 +15,7 @@ Key features:
 import json
 import logging
 import uuid
+import os
 from typing import List, Dict, Any, Optional
 
 from app.services.interfaces.llm_client import ILLMClient
@@ -26,9 +27,9 @@ logger = logging.getLogger(__name__)
 VALID_RELATIONS = {"supports", "contradicts", "depends_on", "evidence_for"}
 
 # LLM configuration for relationship suggestion
-RELATIONSHIP_MODEL = "anthropic/claude-4.5-haiku"
+RELATIONSHIP_MODEL = os.getenv("RELATIONSHIP_MODEL", "anthropic/claude-haiku-4.5")
 RELATIONSHIP_TEMPERATURE = 0.3  # Deterministic suggestions
-RELATIONSHIP_MAX_TOKENS = 800  # Allow detailed reasoning
+RELATIONSHIP_MAX_TOKENS = 1500  # Increased for structured JSON output with reasoning
 
 
 async def suggest_relationships(
@@ -95,14 +96,15 @@ async def suggest_relationships(
     user_message = _build_user_message(belief_title, max_suggestions)
 
     try:
-        # Call LLM for suggestions
+        # Call LLM for suggestions using Claude Haiku for better structured JSON output
         response = await llm_client.generate_response(
             system_prompt=system_prompt,
             context=context,
             user_message=user_message,
             temperature=RELATIONSHIP_TEMPERATURE,
             max_tokens=RELATIONSHIP_MAX_TOKENS,
-            correlation_id=correlation_id
+            correlation_id=correlation_id,
+            model=RELATIONSHIP_MODEL  # Use Claude Haiku instead of default GPT
         )
 
         # Parse and validate LLM response
