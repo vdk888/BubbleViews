@@ -341,11 +341,11 @@ class TestStructuredLogging:
 class TestLoggingWithAuth:
     """Integration tests for logging with authentication endpoints."""
 
-    async def test_auth_endpoint_logging(self, caplog, json_formatter):
+    async def test_auth_endpoint_logging(self, caplog, json_formatter, async_session):
         """
         Test that authentication endpoints produce proper logs.
 
-        Arrange: Set up log capture
+        Arrange: Set up log capture and database tables
         Act: Make request to auth endpoint
         Assert: Log entry is created with correct path
         """
@@ -362,13 +362,16 @@ class TestLoggingWithAuth:
         # Assert - Will fail auth, but should log
         assert response.status_code in [401, 422]
 
-        # Find the request log entry
+        # Find the completed request log entry (has status_code)
         json_logs = []
         for record in caplog.records:
             try:
                 formatted = json_formatter.format(record)
                 log_data = json.loads(formatted)
-                if "path" in log_data and "/auth/token" in log_data["path"]:
+                # Look for completed request logs (have both path and status_code)
+                if ("path" in log_data and
+                    "/auth/token" in log_data["path"] and
+                    "status_code" in log_data):
                     json_logs.append(log_data)
             except (json.JSONDecodeError, ValueError):
                 continue

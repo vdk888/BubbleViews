@@ -8,7 +8,7 @@ class PersonaSummary(BaseModel):
     display_name: str | None = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class PersonaConfig(BaseModel):
@@ -33,7 +33,7 @@ class PersonaConfig(BaseModel):
     )
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "tone": "friendly",
                 "style": "concise",
@@ -95,7 +95,7 @@ class PersonaCreateRequest(BaseModel):
         return v
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "reddit_username": "AgentBot123",
                 "display_name": "Friendly Agent",
@@ -127,8 +127,8 @@ class PersonaCreateResponse(BaseModel):
     created_at: str = Field(..., description="ISO 8601 timestamp")
 
     class Config:
-        orm_mode = True
-        schema_extra = {
+        from_attributes = True
+        json_schema_extra = {
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "reddit_username": "AgentBot123",

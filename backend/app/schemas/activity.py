@@ -13,4 +13,4 @@ class ActivityItem(BaseModel):
     metadata: Dict[str, Any] = {}
 
     class Config:
-        orm_mode = True
+        from_attributes = True

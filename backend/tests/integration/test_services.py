@@ -3,33 +3,14 @@ Integration tests for all Week 3 services.
 
 Tests memory store, Reddit client, LLM client, and moderation service
 working together with real database interactions.
+
+Note: Reddit client tests use proper mocking with patch decorators
+instead of sys.modules manipulation to avoid polluting other tests.
 """
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 import json
-import sys
-
-# Mock asyncpraw before any imports
-sys.modules['asyncpraw'] = MagicMock()
-sys.modules['asyncpraw.exceptions'] = MagicMock()
-sys.modules['asyncpraw.models'] = MagicMock()
-
-# Create mock exception class that inherits from BaseException properly
-class RedditErrorItem:
-    """Mock RedditErrorItem for testing."""
-    def __init__(self, error_type="UNKNOWN"):
-        self.error_type = error_type
-
-class RedditAPIException(Exception):
-    """Mock RedditAPIException for testing."""
-    def __init__(self, message="Reddit API Error", error_type=None):
-        self.error_type = error_type
-        self.items = [RedditErrorItem(error_type)] if error_type else []
-        super().__init__(message)
-
-sys.modules['asyncpraw'].exceptions.RedditAPIException = RedditAPIException
-sys.modules['asyncpraw.exceptions'].RedditAPIException = RedditAPIException
 
 from app.services.memory_store import SQLiteMemoryStore
 from app.services.reddit_client import AsyncPRAWClient

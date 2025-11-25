@@ -14,28 +14,8 @@ They use comprehensive mocks to simulate Reddit API behavior.
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import asyncio
-import sys
 
-# Mock asyncpraw before any imports
-sys.modules['asyncpraw'] = MagicMock()
-sys.modules['asyncpraw.exceptions'] = MagicMock()
-sys.modules['asyncpraw.models'] = MagicMock()
-
-# Create mock exception class that inherits from BaseException properly
-class RedditErrorItem:
-    """Mock RedditErrorItem for testing."""
-    def __init__(self, error_type="UNKNOWN"):
-        self.error_type = error_type
-
-class RedditAPIException(Exception):
-    """Mock RedditAPIException for testing."""
-    def __init__(self, message="Reddit API Error", error_type=None):
-        self.error_type = error_type
-        self.items = [RedditErrorItem(error_type)] if error_type else []
-        super().__init__(message)
-
-sys.modules['asyncpraw'].exceptions.RedditAPIException = RedditAPIException
-sys.modules['asyncpraw.exceptions'].RedditAPIException = RedditAPIException
+from asyncpraw.exceptions import RedditAPIException
 
 from app.services.reddit_client import AsyncPRAWClient
 
@@ -435,7 +415,10 @@ class TestRedditClientIntegration:
         # Setup mock that simulates ban (use "banned" keyword that matches the code)
         mock_subreddit = AsyncMock()
 
-        error = RedditAPIException(error_type="USER_BANNED")
+        # RedditAPIException expects items as list of (error_type, message, field) tuples
+        error = RedditAPIException(items=[
+            ('USER_BANNED', 'You have been banned from this subreddit', '')
+        ])
         mock_subreddit.submit = AsyncMock(side_effect=error)
 
         mock_reddit_api.subreddit = AsyncMock(return_value=mock_subreddit)

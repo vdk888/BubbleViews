@@ -5,7 +5,10 @@
       "Bash(pip install:*)",
       "Bash(npm run dev:*)",
       "Bash(venvScriptspython -c \"import fastapi; print(''FastAPI imported successfully'')\")",
-      "Bash(./venv/Scripts/python.exe -m pytest tests/ --ignore=tests/integration/test_belief_update_flow.py -v --tb=short)"
+      "Bash(./venv/Scripts/python.exe -m pytest tests/ --ignore=tests/integration/test_belief_update_flow.py -v --tb=short)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(venvScriptspython -c \"import aiosqlite; print(''aiosqlite version:'', aiosqlite.__version__)\")"
     ],
     "deny": [],
     "ask": []

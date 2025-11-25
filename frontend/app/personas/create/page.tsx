@@ -87,7 +87,11 @@ export default function CreatePersonaPage() {
       });
 
       // Auto-select the new persona
-      selectPersona(response.id);
+      selectPersona({
+        id: response.id,
+        reddit_username: response.reddit_username,
+        display_name: response.display_name,
+      });
 
       // Redirect to dashboard
       router.push('/');

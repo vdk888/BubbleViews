@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
 import Link from "next/link";
 import { PersonaSelector } from "@/components/PersonaSelector";
+import { LogoutButton } from "@/components/LogoutButton";
 import "./globals.css";
 
 const inter = Inter({
@@ -74,6 +75,7 @@ export default function RootLayout({
                   >
                     Preferences
                   </Link>
+                  <LogoutButton />
                 </div>
               </div>
             </div>

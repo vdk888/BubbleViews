@@ -303,7 +303,7 @@ class TestPersonaAPICreate:
 
         Arrange: Prepare request with invalid/malformed token
         Act: POST to /api/v1/personas
-        Assert: Returns 403 Forbidden
+        Assert: Returns 401 Unauthorized (credentials provided but invalid)
         """
         # Arrange
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -319,7 +319,7 @@ class TestPersonaAPICreate:
             )
 
             # Assert
-            assert response.status_code == 403
+            assert response.status_code == 401
 
     @pytest.mark.anyio
     async def test_create_persona_with_config(

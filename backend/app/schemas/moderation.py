@@ -14,7 +14,7 @@ class PendingItem(BaseModel):
     created_at: Any | None = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ModerationActionRequest(BaseModel):

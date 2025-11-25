@@ -9,14 +9,15 @@ export function PersonaSelector() {
   const router = useRouter();
   const [personas, setPersonas] = useState<PersonaSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
   const { selectedPersonaId, selectPersona } = usePersona();
 
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    setIsAuthenticated(!!token);
+    const token = localStorage.getItem("auth_token");
+    setHasToken(!!token);
     if (token) {
+      // Ensure apiClient has the token before making requests
+      apiClient.setToken(token);
       loadPersonas();
     } else {
       setLoading(false);
@@ -33,30 +34,31 @@ export function PersonaSelector() {
         selectPersona(data[0]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load personas");
+      // On any error, just show empty personas state (allow creating)
+      console.error("Failed to load personas:", err);
+      setPersonas([]);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isAuthenticated) {
+  // Don't render anything if no token
+  if (!hasToken) {
     return null;
   }
 
+  // Show loading state
   if (loading) {
     return <div className="text-sm muted">Chargement...</div>;
   }
 
-  if (error) {
-    return <div className="text-sm text-red-600">Erreur : {error}</div>;
-  }
-
+  // No personas - show create button
   if (personas.length === 0) {
     return (
       <div className="flex items-center gap-2">
-        <div className="text-sm muted">Aucune persona</div>
+        <span className="text-sm muted">Aucune persona</span>
         <button
-          onClick={() => router.push('/personas/create')}
+          onClick={() => router.push("/personas/create")}
           className="px-3 py-1.5 bg-[var(--primary)] text-white text-xs font-semibold rounded-md hover:opacity-90 transition-opacity"
         >
           Creer
@@ -65,6 +67,7 @@ export function PersonaSelector() {
     );
   }
 
+  // Has personas - show dropdown + add button
   return (
     <div className="flex items-center gap-2">
       <select
@@ -82,7 +85,7 @@ export function PersonaSelector() {
         ))}
       </select>
       <button
-        onClick={() => router.push('/personas/create')}
+        onClick={() => router.push("/personas/create")}
         className="px-2 py-1.5 border border-[var(--border)] rounded-md text-xs font-semibold hover:bg-[var(--card)] transition-colors"
         title="Create new persona"
       >
