@@ -21,7 +21,8 @@ function LoginForm() {
       await apiClient.login(username, password);
       // Redirect to original page or dashboard on successful login
       const redirectTo = searchParams.get('redirect') || '/';
-      router.push(redirectTo);
+      // Use hard redirect to ensure cookie is picked up by middleware
+      window.location.href = redirectTo;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
