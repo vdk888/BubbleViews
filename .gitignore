@@ -3,3 +3,4 @@ config.json
 backend/data/
 image.png
 backend/.env
+DEPLOYMENT_GUIDE.md
