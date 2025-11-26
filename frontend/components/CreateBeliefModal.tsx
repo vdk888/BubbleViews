@@ -159,9 +159,12 @@ export function CreateBeliefModal({
   const handleBlur = useCallback((field: keyof FormState) => () => {
     setTouched((prev) => new Set(prev).add(field));
 
-    const error = validateField(field, formState[field]);
-    if (error) {
-      setErrors((prev) => ({ ...prev, [field]: error }));
+    const value = formState[field];
+    if (typeof value === "string" || typeof value === "number") {
+      const error = validateField(field, value);
+      if (error) {
+        setErrors((prev) => ({ ...prev, [field]: error }));
+      }
     }
   }, [formState, validateField]);
 

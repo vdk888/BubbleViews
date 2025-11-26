@@ -48,6 +48,19 @@ export interface BeliefProposals {
   new_belief: NewBeliefProposal | null;
 }
 
+export interface OriginalPostMetadata {
+  reddit_id?: string;
+  title?: string;
+  body?: string;
+  author?: string;
+}
+
+export interface DraftMetadata {
+  original_post?: OriginalPostMetadata;
+  context?: string;
+  [key: string]: unknown;
+}
+
 export interface PendingItem {
   id: string;
   persona_id: string;
@@ -55,7 +68,7 @@ export interface PendingItem {
   post_type: string | null;
   target_subreddit: string | null;
   parent_id: string | null;
-  draft_metadata: Record<string, unknown>;
+  draft_metadata: DraftMetadata;
   status: string;
   created_at: string | null;
   belief_proposals: BeliefProposals | null;
