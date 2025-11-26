@@ -361,7 +361,8 @@ class AgentLoop:
         # Filter already-seen posts
         unseen_posts = []
         for post in all_posts:
-            reddit_id = post["id"]
+            # Use t3_ prefix to match how parent_id is stored in interactions
+            reddit_id = f"t3_{post['id']}"
 
             # Check if we've already interacted with this post
             interactions = await self.memory_store.search_interactions(

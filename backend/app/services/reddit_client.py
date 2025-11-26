@@ -407,7 +407,8 @@ class AsyncPRAWClient(IRedditClient):
             # Fetch comment replies from inbox
             async for item in self.reddit.inbox.comment_replies(limit=limit):
                 try:
-                    reply_dict = await self._comment_to_dict(item)
+                    # Inbox items need load_full=True to get all attributes
+                    reply_dict = await self._comment_to_dict(item, load_full=True)
                     if reply_dict:
                         # Add inbox-specific fields
                         reply_dict["is_new"] = item.new
@@ -456,7 +457,8 @@ class AsyncPRAWClient(IRedditClient):
             # Fetch username mentions from inbox
             async for item in self.reddit.inbox.mentions(limit=limit):
                 try:
-                    mention_dict = await self._comment_to_dict(item)
+                    # Inbox items need load_full=True to get all attributes
+                    mention_dict = await self._comment_to_dict(item, load_full=True)
                     if mention_dict:
                         # Add inbox-specific fields
                         mention_dict["is_new"] = item.new
@@ -565,7 +567,8 @@ class AsyncPRAWClient(IRedditClient):
 
     async def _comment_to_dict(
         self,
-        comment: Comment
+        comment: Comment,
+        load_full: bool = False
     ) -> Optional[Dict[str, Any]]:
         """
         Convert asyncpraw Comment to dictionary.
@@ -575,6 +578,7 @@ class AsyncPRAWClient(IRedditClient):
 
         Args:
             comment: asyncpraw Comment object
+            load_full: If True, call load() to fetch all attributes (needed for inbox items)
 
         Returns:
             Dictionary with comment data, or None if comment is deleted/removed
@@ -585,6 +589,10 @@ class AsyncPRAWClient(IRedditClient):
             - Extracts only fields relevant to the agent
         """
         try:
+            # Inbox items need to be loaded to get all attributes
+            if load_full:
+                await comment.load()
+
             # Check if comment is deleted or removed
             if comment.body in ['[deleted]', '[removed]']:
                 return None
@@ -593,17 +601,17 @@ class AsyncPRAWClient(IRedditClient):
             if comment.author is None or str(comment.author) == '[deleted]':
                 return None
 
-            # Extract comment data
+            # Extract comment data - use getattr for optional fields
             return {
                 'id': comment.id,
                 'body': comment.body or '',
                 'author': str(comment.author),
                 'parent_id': comment.parent_id,
-                'link_id': comment.link_id,
+                'link_id': getattr(comment, 'link_id', None),
                 'subreddit': str(comment.subreddit),
                 'created_utc': int(comment.created_utc),
-                'score': comment.score,
-                'permalink': comment.permalink,
+                'score': getattr(comment, 'score', 0),
+                'permalink': getattr(comment, 'permalink', ''),
             }
 
         except Exception as e:
