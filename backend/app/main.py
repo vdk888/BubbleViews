@@ -18,6 +18,7 @@ from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.gateway_auth import GatewayAuthMiddleware
 
 
 @asynccontextmanager
@@ -67,6 +68,9 @@ app = FastAPI(
 
 # Security headers middleware (runs last, adds headers to response)
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Gateway authentication middleware (validates requests from authorized frontends)
+app.add_middleware(GatewayAuthMiddleware)
 
 # Rate limiting middleware (protects all endpoints)
 app.add_middleware(
