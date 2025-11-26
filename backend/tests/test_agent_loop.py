@@ -139,7 +139,14 @@ def agent_loop(
         moderation=mock_moderation,
         interval_seconds=1,  # Short interval for tests
         max_posts_per_cycle=5,
-        response_probability=1.0  # Always respond in tests
+        response_probability=1.0,  # Legacy param (superseded by engagement config)
+        engagement_config={
+            "score_weight": 1.0,
+            "comment_weight": 2.0,
+            "min_probability": 1.0,  # Always respond in tests
+            "max_probability": 1.0,
+            "probability_midpoint": 20.0,
+        }
     )
 
 
@@ -694,3 +701,177 @@ async def test_should_respond_raises_on_missing_fields(agent_loop):
     # Act & Assert
     with pytest.raises(ValueError, match="must contain 'author' and 'id'"):
         await agent_loop.should_respond(persona_id, post)
+
+
+# ============================================================================
+# Test Engagement Scoring
+# ============================================================================
+
+@pytest.fixture
+def agent_loop_with_engagement(
+    mock_reddit_client,
+    mock_llm_client,
+    mock_memory_store,
+    mock_retrieval,
+    mock_moderation
+):
+    """Create agent loop with custom engagement config."""
+    return AgentLoop(
+        reddit_client=mock_reddit_client,
+        llm_client=mock_llm_client,
+        memory_store=mock_memory_store,
+        retrieval=mock_retrieval,
+        moderation=mock_moderation,
+        interval_seconds=1,
+        max_posts_per_cycle=5,
+        engagement_config={
+            "score_weight": 1.0,
+            "comment_weight": 2.0,
+            "min_probability": 0.1,
+            "max_probability": 0.8,
+            "probability_midpoint": 20.0,
+        }
+    )
+
+
+def test_calculate_engagement_score_basic(agent_loop_with_engagement):
+    """Test engagement score calculation with default weights."""
+    # Arrange
+    post = {"score": 10, "num_comments": 5}
+
+    # Act
+    score = agent_loop_with_engagement._calculate_engagement_score(post)
+
+    # Assert - score_weight=1.0, comment_weight=2.0
+    # Expected: 1.0 * 10 + 2.0 * 5 = 20.0
+    assert score == 20.0
+
+
+def test_calculate_engagement_score_missing_fields(agent_loop_with_engagement):
+    """Test engagement score with missing fields uses defaults."""
+    # Arrange
+    post = {}  # No score or num_comments
+
+    # Act
+    score = agent_loop_with_engagement._calculate_engagement_score(post)
+
+    # Assert - defaults: score=1, num_comments=0
+    # Expected: 1.0 * 1 + 2.0 * 0 = 1.0
+    assert score == 1.0
+
+
+def test_calculate_engagement_score_high_engagement(agent_loop_with_engagement):
+    """Test engagement score for viral post."""
+    # Arrange
+    post = {"score": 500, "num_comments": 200}
+
+    # Act
+    score = agent_loop_with_engagement._calculate_engagement_score(post)
+
+    # Assert
+    # Expected: 1.0 * 500 + 2.0 * 200 = 900.0
+    assert score == 900.0
+
+
+def test_engagement_probability_at_midpoint(agent_loop_with_engagement):
+    """Test probability is ~50% at midpoint engagement score."""
+    # Arrange - midpoint is 20.0
+
+    # Act
+    prob = agent_loop_with_engagement._engagement_probability(20.0)
+
+    # Assert - at midpoint, sigmoid = 0.5, so prob = 0.1 + 0.7 * 0.5 = 0.45
+    assert 0.4 < prob < 0.5
+
+
+def test_engagement_probability_low_engagement(agent_loop_with_engagement):
+    """Test low engagement gets close to min probability."""
+    # Arrange
+    low_score = 1.0  # New post with 1 upvote, 0 comments
+
+    # Act
+    prob = agent_loop_with_engagement._engagement_probability(low_score)
+
+    # Assert - should be close to min_probability (0.1)
+    assert 0.1 <= prob < 0.2
+
+
+def test_engagement_probability_high_engagement(agent_loop_with_engagement):
+    """Test high engagement gets close to max probability."""
+    # Arrange
+    high_score = 100.0  # Popular post
+
+    # Act
+    prob = agent_loop_with_engagement._engagement_probability(high_score)
+
+    # Assert - should be close to max_probability (0.8)
+    assert 0.7 < prob <= 0.8
+
+
+def test_engagement_probability_very_high_engagement(agent_loop_with_engagement):
+    """Test very high engagement caps at max probability."""
+    # Arrange
+    viral_score = 1000.0  # Viral post
+
+    # Act
+    prob = agent_loop_with_engagement._engagement_probability(viral_score)
+
+    # Assert - should approach but not exceed max_probability (0.8)
+    assert 0.79 < prob <= 0.8
+
+
+def test_engagement_probability_zero_midpoint_handled(
+    mock_reddit_client,
+    mock_llm_client,
+    mock_memory_store,
+    mock_retrieval,
+    mock_moderation
+):
+    """Test that zero midpoint doesn't cause division by zero."""
+    # Arrange
+    agent = AgentLoop(
+        reddit_client=mock_reddit_client,
+        llm_client=mock_llm_client,
+        memory_store=mock_memory_store,
+        retrieval=mock_retrieval,
+        moderation=mock_moderation,
+        engagement_config={
+            "score_weight": 1.0,
+            "comment_weight": 2.0,
+            "min_probability": 0.1,
+            "max_probability": 0.8,
+            "probability_midpoint": 0,  # Invalid - should fallback to 20.0
+        }
+    )
+
+    # Act - should not raise ZeroDivisionError
+    prob = agent._engagement_probability(20.0)
+
+    # Assert - uses fallback midpoint of 20.0
+    assert 0.4 < prob < 0.5
+
+
+def test_engagement_config_defaults(
+    mock_reddit_client,
+    mock_llm_client,
+    mock_memory_store,
+    mock_retrieval,
+    mock_moderation
+):
+    """Test default engagement config is set when not provided."""
+    # Arrange - create agent without explicit engagement_config
+    agent = AgentLoop(
+        reddit_client=mock_reddit_client,
+        llm_client=mock_llm_client,
+        memory_store=mock_memory_store,
+        retrieval=mock_retrieval,
+        moderation=mock_moderation,
+    )
+
+    # Assert - defaults should be applied
+    assert agent.engagement_config is not None
+    assert agent.engagement_config["score_weight"] == 1.0
+    assert agent.engagement_config["comment_weight"] == 2.0
+    assert agent.engagement_config["min_probability"] == 0.1
+    assert agent.engagement_config["max_probability"] == 0.8
+    assert agent.engagement_config["probability_midpoint"] == 20.0
