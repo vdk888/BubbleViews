@@ -32,6 +32,7 @@ from app.services.reddit_client import AsyncPRAWClient
 from app.services.llm_client import OpenRouterClient
 from app.services.memory_store import SQLiteMemoryStore
 from app.services.retrieval import RetrievalCoordinator
+from app.services.embedding_service import get_embedding_service
 from app.services.moderation import ModerationService
 from app.agent.loop import AgentLoop
 
@@ -209,16 +210,17 @@ async def initialize_services():
 
     # Initialize memory store
     try:
-        memory_store = SQLiteMemoryStore(session_maker=async_session_maker)
+        memory_store = SQLiteMemoryStore(session_or_maker=async_session_maker)
         logger.info("Memory store initialized")
     except Exception as e:
         raise ConnectionError(f"Failed to initialize memory store: {e}")
 
     # Initialize retrieval coordinator
     try:
+        embedding_service = get_embedding_service()
         retrieval = RetrievalCoordinator(
             memory_store=memory_store,
-            llm_client=llm_client
+            embedding_service=embedding_service
         )
         logger.info("Retrieval coordinator initialized")
     except Exception as e:
@@ -226,7 +228,7 @@ async def initialize_services():
 
     # Initialize moderation service
     try:
-        moderation = ModerationService(session_maker=async_session_maker)
+        moderation = ModerationService(session_or_maker=async_session_maker)
         logger.info("Moderation service initialized")
     except Exception as e:
         raise ConnectionError(f"Failed to initialize moderation service: {e}")
