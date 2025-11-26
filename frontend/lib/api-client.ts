@@ -5,7 +5,8 @@
  * Types mirror Pydantic schemas from backend/app/schemas/*.py
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Use relative URL in production (Vercel rewrites to backend), full URL in development
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 // Type definitions matching backend schemas
 
