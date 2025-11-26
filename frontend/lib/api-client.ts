@@ -518,6 +518,7 @@ class ApiClient {
       interval_seconds?: number;
       max_posts_per_cycle?: number;
       response_probability?: number;
+      max_post_age_hours?: number;
       engagement_config?: {
         score_weight?: number;
         comment_weight?: number;
@@ -535,6 +536,7 @@ class ApiClient {
         ...(options?.interval_seconds && { interval_seconds: options.interval_seconds }),
         max_posts_per_cycle: options?.max_posts_per_cycle ?? 5,
         response_probability: options?.response_probability ?? 0.3,
+        max_post_age_hours: options?.max_post_age_hours ?? 24,
         ...(options?.engagement_config && { engagement_config: options.engagement_config }),
       }),
     });

@@ -33,6 +33,7 @@ class AgentStartRequest(BaseModel):
     max_posts_per_cycle: int = Field(5, ge=1, le=20, description="Max posts to process per cycle (1-20)")
     response_probability: float = Field(0.3, ge=0.0, le=1.0, description="Legacy: base probability (superseded by engagement_config)")
     engagement_config: EngagementConfig | None = Field(None, description="Engagement-based post selection config (optional)")
+    max_post_age_hours: int = Field(24, ge=1, le=168, description="Max age of posts to respond to in hours (1-168, default: 24)")
 
     class Config:
         json_schema_extra = {
@@ -40,6 +41,7 @@ class AgentStartRequest(BaseModel):
                 "persona_id": "123e4567-e89b-12d3-a456-426614174000",
                 "interval_seconds": 14400,
                 "max_posts_per_cycle": 5,
+                "max_post_age_hours": 24,
                 "engagement_config": {
                     "score_weight": 1.0,
                     "comment_weight": 2.0,
@@ -194,7 +196,8 @@ async def start_agent(
             interval_seconds=request.interval_seconds,
             max_posts_per_cycle=request.max_posts_per_cycle,
             response_probability=request.response_probability,
-            engagement_config=engagement_dict
+            engagement_config=engagement_dict,
+            max_post_age_hours=request.max_post_age_hours
         )
         return AgentActionResponse(**result)
     except ValueError as e:

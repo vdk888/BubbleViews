@@ -75,6 +75,7 @@ class AgentLoop:
         response_probability: float = 0.3,
         max_conversation_depth: int = 5,
         engagement_config: Optional[Dict[str, float]] = None,
+        max_post_age_hours: int = 24,
     ):
         """
         Initialize agent loop with injected dependencies.
@@ -92,6 +93,8 @@ class AgentLoop:
             max_conversation_depth: Maximum depth of reply chain to engage in (default: 5)
             engagement_config: Configuration for engagement-based post selection (optional).
                 Keys: score_weight, comment_weight, min_probability, max_probability, probability_midpoint
+            max_post_age_hours: Maximum age of posts to consider in hours (default: 24).
+                Posts older than this are skipped even if they appear in the "new" feed.
         """
         self.reddit_client = reddit_client
         self.llm_client = llm_client
@@ -111,6 +114,7 @@ class AgentLoop:
             "max_probability": 0.8,
             "probability_midpoint": 20.0,
         }
+        self.max_post_age_hours = max_post_age_hours
 
         # Internal state
         self._stop_event = asyncio.Event()
@@ -358,9 +362,22 @@ class AgentLoop:
             limit=10
         )
 
-        # Filter already-seen posts
+        # Calculate cutoff timestamp for max age filter
+        import time
+        current_time = time.time()
+        max_age_seconds = self.max_post_age_hours * 3600
+        cutoff_timestamp = current_time - max_age_seconds
+
+        # Filter already-seen posts and posts older than max_post_age_hours
         unseen_posts = []
+        skipped_old = 0
         for post in all_posts:
+            # Check post age first (cheaper than DB lookup)
+            post_created = post.get("created_utc", 0)
+            if post_created < cutoff_timestamp:
+                skipped_old += 1
+                continue
+
             # Use t3_ prefix to match how parent_id is stored in interactions
             reddit_id = f"t3_{post['id']}"
 
@@ -373,8 +390,14 @@ class AgentLoop:
             if not interactions:
                 unseen_posts.append(post)
 
+        if skipped_old > 0:
+            logger.debug(
+                f"Skipped {skipped_old} posts older than {self.max_post_age_hours} hours",
+                extra={"persona_id": persona_id}
+            )
+
         logger.debug(
-            f"Perceived {len(all_posts)} posts, {len(unseen_posts)} unseen",
+            f"Perceived {len(all_posts)} posts, {len(unseen_posts)} unseen (skipped {skipped_old} old)",
             extra={"persona_id": persona_id, "subreddits": target_subreddits}
         )
 

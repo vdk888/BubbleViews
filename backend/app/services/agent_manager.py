@@ -148,7 +148,8 @@ class AgentManager:
         interval_seconds: int = None,
         max_posts_per_cycle: int = 5,
         response_probability: float = 0.3,
-        engagement_config: Dict[str, float] = None
+        engagement_config: Dict[str, float] = None,
+        max_post_age_hours: int = 24
     ) -> Dict[str, Any]:
         """
         Start agent loop for a persona.
@@ -163,6 +164,8 @@ class AgentManager:
             response_probability: Probability of responding to eligible posts (default: 0.3)
             engagement_config: Configuration for engagement-based post selection (optional).
                 Keys: score_weight, comment_weight, min_probability, max_probability, probability_midpoint
+            max_post_age_hours: Maximum age of posts to respond to in hours (default: 24).
+                Posts older than this are ignored.
 
         Returns:
             Status dict with:
@@ -223,6 +226,7 @@ class AgentManager:
             max_posts_per_cycle=max_posts_per_cycle,
             response_probability=response_probability,
             engagement_config=engagement_config,
+            max_post_age_hours=max_post_age_hours,
         )
 
         # Create status tracking
