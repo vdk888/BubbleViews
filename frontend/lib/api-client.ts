@@ -560,6 +560,42 @@ class ApiClient {
     const params = new URLSearchParams({ persona_id });
     return this.request(`/api/v1/agent/status?${params}`);
   }
+
+  // Systemd agent control (persistent background agent)
+  async startSystemdAgent(persona_id: string): Promise<{
+    active: boolean;
+    status: string;
+    persona_id: string | null;
+    persona_name: string | null;
+    message: string;
+  }> {
+    return this.request("/api/v1/agent/systemd/start", {
+      method: "POST",
+      body: JSON.stringify({ persona_id }),
+    });
+  }
+
+  async stopSystemdAgent(): Promise<{
+    active: boolean;
+    status: string;
+    persona_id: string | null;
+    persona_name: string | null;
+    message: string;
+  }> {
+    return this.request("/api/v1/agent/systemd/stop", {
+      method: "POST",
+    });
+  }
+
+  async getSystemdAgentStatus(): Promise<{
+    active: boolean;
+    status: string;
+    persona_id: string | null;
+    persona_name: string | null;
+    message: string;
+  }> {
+    return this.request("/api/v1/agent/systemd/status");
+  }
 }
 
 export const apiClient = new ApiClient();

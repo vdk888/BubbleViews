@@ -300,6 +300,7 @@ Expect: JSON {
 - [Week 4 Plan](docs/week4.md) - Agent loop, belief updates, dashboard
 - [Brainstorming](docs/brainstorming.md) - Original ideation and UX concepts
 - [Diagram](docs/architecture/system-diagram.md) - Diagram of all flows
+- [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) - server access and deployment details
 ---
 
 **Last updated**: 2025-11-26

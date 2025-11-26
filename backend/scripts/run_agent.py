@@ -86,8 +86,10 @@ Environment Variables:
     parser.add_argument(
         '--persona-id',
         type=str,
-        required=True,
-        help='UUID of the persona to run the agent for'
+        required=False,
+        default=None,
+        help='UUID of the persona to run the agent for. '
+             'If not provided, reads from .agent_persona file or AGENT_PERSONA_ID env var.'
     )
 
     parser.add_argument(
@@ -254,11 +256,38 @@ async def main():
     load_dotenv(dotenv_path=env_file)
     logger.info(f"Loaded environment from {env_file}")
 
+    # Resolve persona ID (CLI arg > .agent_persona file > env var)
+    persona_id = args.persona_id
+    if not persona_id:
+        # Try reading from .agent_persona file
+        agent_persona_file = Path(__file__).parent.parent / ".agent_persona"
+        if agent_persona_file.exists():
+            try:
+                with open(agent_persona_file, "r") as f:
+                    for line in f:
+                        if line.startswith("AGENT_PERSONA_ID="):
+                            persona_id = line.strip().split("=", 1)[1]
+                            logger.info(f"Read persona ID from {agent_persona_file}")
+                            break
+            except Exception as e:
+                logger.warning(f"Failed to read {agent_persona_file}: {e}")
+
+    if not persona_id:
+        # Try env var
+        persona_id = os.getenv("AGENT_PERSONA_ID")
+        if persona_id:
+            logger.info("Read persona ID from AGENT_PERSONA_ID env var")
+
+    if not persona_id:
+        logger.error("No persona ID provided!")
+        logger.error("Provide via --persona-id, .agent_persona file, or AGENT_PERSONA_ID env var")
+        sys.exit(1)
+
     # Print banner
     print("=" * 80)
     print("Reddit AI Agent - Autonomous Loop")
     print("=" * 80)
-    print(f"Persona ID: {args.persona_id}")
+    print(f"Persona ID: {persona_id}")
     print(f"Interval: {args.interval}s")
     print(f"Max posts per cycle: {args.max_posts}")
     print(f"Response probability: {args.probability}")
@@ -274,7 +303,7 @@ async def main():
 
     # Verify persona exists
     try:
-        persona = await memory_store.get_persona(args.persona_id)
+        persona = await memory_store.get_persona(persona_id)
         logger.info(f"Loaded persona: {persona['reddit_username']} ({persona['display_name']})")
         print(f"Running agent for: u/{persona['reddit_username']}")
         print()
@@ -344,7 +373,7 @@ async def main():
         print()
 
         await agent_loop.run(
-            persona_id=args.persona_id,
+            persona_id=persona_id,
             stop_event=stop_event
         )
 

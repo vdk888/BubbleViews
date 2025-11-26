@@ -422,3 +422,240 @@ async def get_all_agent_statuses(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get agent statuses: {str(e)}"
         )
+
+
+# =============================================================================
+# Systemd Service Control Endpoints (for persistent background agent)
+# =============================================================================
+
+import asyncio
+import os
+
+SYSTEMD_SERVICE_NAME = "bubbleviews-agent"
+AGENT_ENV_FILE = "/root/BubbleViews/backend/.agent_persona"
+
+
+class SystemdAgentRequest(BaseModel):
+    """Request to start/stop the systemd agent service."""
+    persona_id: str = Field(..., description="UUID of the persona to run")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "persona_id": "0f26b1c9-6370-46c2-8a9f-d866f43f963b"
+            }
+        }
+
+
+class SystemdAgentStatusResponse(BaseModel):
+    """Response with systemd agent service status."""
+    active: bool
+    status: str  # "running", "stopped", "failed", "unknown"
+    persona_id: str | None
+    persona_name: str | None
+    message: str
+
+
+async def run_systemctl(command: str) -> tuple[int, str, str]:
+    """Run a systemctl command and return (returncode, stdout, stderr)."""
+    proc = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await proc.communicate()
+    return proc.returncode, stdout.decode(), stderr.decode()
+
+
+@router.post(
+    "/agent/systemd/start",
+    response_model=SystemdAgentStatusResponse,
+    summary="Start the persistent background agent (systemd)",
+    description="""
+    Start the systemd-managed agent service for a specific persona.
+
+    This runs the agent as a background daemon that persists across API restarts.
+    Only one persona can run at a time via systemd.
+
+    **Authentication:** Required (Bearer token)
+    """,
+    tags=["agent-systemd"]
+)
+async def start_systemd_agent(
+    request: SystemdAgentRequest,
+    current_user: CurrentActiveUser = None,
+    agent_manager: AgentManagerDep = None
+) -> SystemdAgentStatusResponse:
+    """Start the systemd agent service for a persona."""
+    try:
+        # Verify persona exists and get name
+        persona = await agent_manager._memory_store.get_persona(request.persona_id)
+        if not persona:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Persona not found: {request.persona_id}"
+            )
+
+        persona_name = persona.get("display_name") or persona.get("reddit_username")
+
+        # Write persona ID to env file
+        with open(AGENT_ENV_FILE, "w") as f:
+            f.write(f"AGENT_PERSONA_ID={request.persona_id}\n")
+
+        # Restart the systemd service
+        returncode, stdout, stderr = await run_systemctl(
+            f"systemctl restart {SYSTEMD_SERVICE_NAME}"
+        )
+
+        if returncode != 0:
+            return SystemdAgentStatusResponse(
+                active=False,
+                status="failed",
+                persona_id=request.persona_id,
+                persona_name=persona_name,
+                message=f"Failed to start service: {stderr}"
+            )
+
+        # Wait a moment and check status
+        await asyncio.sleep(2)
+        returncode, stdout, stderr = await run_systemctl(
+            f"systemctl is-active {SYSTEMD_SERVICE_NAME}"
+        )
+
+        is_active = stdout.strip() == "active"
+
+        return SystemdAgentStatusResponse(
+            active=is_active,
+            status="running" if is_active else "failed",
+            persona_id=request.persona_id,
+            persona_name=persona_name,
+            message=f"Agent started for {persona_name}" if is_active else f"Service not active: {stdout.strip()}"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start systemd agent: {str(e)}"
+        )
+
+
+@router.post(
+    "/agent/systemd/stop",
+    response_model=SystemdAgentStatusResponse,
+    summary="Stop the persistent background agent (systemd)",
+    description="""
+    Stop the systemd-managed agent service.
+
+    **Authentication:** Required (Bearer token)
+    """,
+    tags=["agent-systemd"]
+)
+async def stop_systemd_agent(
+    current_user: CurrentActiveUser = None
+) -> SystemdAgentStatusResponse:
+    """Stop the systemd agent service."""
+    try:
+        # Stop the service
+        returncode, stdout, stderr = await run_systemctl(
+            f"systemctl stop {SYSTEMD_SERVICE_NAME}"
+        )
+
+        if returncode != 0:
+            return SystemdAgentStatusResponse(
+                active=True,
+                status="failed",
+                persona_id=None,
+                persona_name=None,
+                message=f"Failed to stop service: {stderr}"
+            )
+
+        return SystemdAgentStatusResponse(
+            active=False,
+            status="stopped",
+            persona_id=None,
+            persona_name=None,
+            message="Agent stopped"
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to stop systemd agent: {str(e)}"
+        )
+
+
+@router.get(
+    "/agent/systemd/status",
+    response_model=SystemdAgentStatusResponse,
+    summary="Get persistent background agent status (systemd)",
+    description="""
+    Get the status of the systemd-managed agent service.
+
+    **Authentication:** Required (Bearer token)
+    """,
+    tags=["agent-systemd"]
+)
+async def get_systemd_agent_status(
+    current_user: CurrentActiveUser = None,
+    agent_manager: AgentManagerDep = None
+) -> SystemdAgentStatusResponse:
+    """Get the systemd agent service status."""
+    try:
+        # Check if service is active
+        returncode, stdout, stderr = await run_systemctl(
+            f"systemctl is-active {SYSTEMD_SERVICE_NAME}"
+        )
+        is_active = stdout.strip() == "active"
+
+        # Read current persona ID from env file
+        persona_id = None
+        persona_name = None
+        if os.path.exists(AGENT_ENV_FILE):
+            try:
+                with open(AGENT_ENV_FILE, "r") as f:
+                    for line in f:
+                        if line.startswith("AGENT_PERSONA_ID="):
+                            persona_id = line.strip().split("=", 1)[1]
+                            break
+            except Exception:
+                pass
+
+        # Get persona name if we have an ID
+        if persona_id and agent_manager:
+            try:
+                persona = await agent_manager._memory_store.get_persona(persona_id)
+                if persona:
+                    persona_name = persona.get("display_name") or persona.get("reddit_username")
+            except Exception:
+                pass
+
+        if is_active:
+            status_str = "running"
+            message = f"Agent running for {persona_name or 'unknown persona'}"
+        else:
+            # Check if it failed or just stopped
+            returncode2, stdout2, _ = await run_systemctl(
+                f"systemctl is-failed {SYSTEMD_SERVICE_NAME}"
+            )
+            if stdout2.strip() == "failed":
+                status_str = "failed"
+                message = "Agent service failed - check logs"
+            else:
+                status_str = "stopped"
+                message = "Agent not running"
+
+        return SystemdAgentStatusResponse(
+            active=is_active,
+            status=status_str,
+            persona_id=persona_id,
+            persona_name=persona_name,
+            message=message
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get systemd agent status: {str(e)}"
+        )

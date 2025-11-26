@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
+  const [runningPersonaName, setRunningPersonaName] = useState<string | null>(null);
 
   // Local state for editable fields
   const [targetSubreddits, setTargetSubreddits] = useState<string>("");
@@ -94,11 +95,18 @@ export default function SettingsPage() {
   };
 
   const loadAgentStatus = async () => {
-    if (!selectedPersonaId) return;
-
     try {
-      const status = await apiClient.getAgentStatus(selectedPersonaId);
-      setAgentStatus(status);
+      // Use systemd status (global, not per-persona)
+      const status = await apiClient.getSystemdAgentStatus();
+      setAgentStatus({
+        persona_id: status.persona_id || "",
+        status: status.status,
+        started_at: null,
+        last_activity: null,
+        error_message: status.status === "failed" ? status.message : null,
+        cycle_count: 0,
+      });
+      setRunningPersonaName(status.persona_name);
       setAgentError(null);
     } catch (err) {
       setAgentError(err instanceof Error ? err.message : "Failed to load agent status");
@@ -111,7 +119,10 @@ export default function SettingsPage() {
     try {
       setAgentLoading(true);
       setAgentError(null);
-      await apiClient.startAgent(selectedPersonaId);
+      const result = await apiClient.startSystemdAgent(selectedPersonaId);
+      if (!result.active) {
+        setAgentError(result.message);
+      }
       await loadAgentStatus();
     } catch (err) {
       setAgentError(err instanceof Error ? err.message : "Failed to start agent");
@@ -121,12 +132,12 @@ export default function SettingsPage() {
   };
 
   const handleStopAgent = async () => {
-    if (!selectedPersonaId || agentLoading) return;
+    if (agentLoading) return;
 
     try {
       setAgentLoading(true);
       setAgentError(null);
-      await apiClient.stopAgent(selectedPersonaId);
+      await apiClient.stopSystemdAgent();
       await loadAgentStatus();
     } catch (err) {
       setAgentError(err instanceof Error ? err.message : "Failed to stop agent");
@@ -252,12 +263,17 @@ export default function SettingsPage() {
                   <div>
                     <div className="flex items-center space-x-2">
                       <span className="text-sm font-semibold text-[var(--primary)]">
-                        Status: {agentStatus?.status || "not_running"}
+                        Status: {agentStatus?.status || "stopped"}
                       </span>
+                      {isAgentRunning && runningPersonaName && (
+                        <span className="text-xs text-[var(--text-secondary)]">
+                          (running as {runningPersonaName})
+                        </span>
+                      )}
                     </div>
-                    {agentStatus?.last_activity && (
-                      <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                        Last activity: {formatTimestamp(agentStatus.last_activity)}
+                    {isAgentRunning && runningPersonaName && agentStatus?.persona_id !== selectedPersonaId && (
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        Warning: Agent is running a different persona
                       </p>
                     )}
                   </div>
