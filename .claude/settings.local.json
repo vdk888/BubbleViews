@@ -11,7 +11,8 @@
       "Bash(venvScriptspython -c \"import aiosqlite; print(''aiosqlite version:'', aiosqlite.__version__)\")",
       "Bash(taskkill /PID 15784 /F)",
       "Bash(taskkill:*)",
-      "Bash(powershell -Command \"Stop-Process -Id 15784 -Force; Stop-Process -Id 25888 -Force\")"
+      "Bash(powershell -Command \"Stop-Process -Id 15784 -Force; Stop-Process -Id 25888 -Force\")",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
