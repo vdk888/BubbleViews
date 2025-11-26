@@ -32,7 +32,7 @@ from app.services.reddit_client import AsyncPRAWClient
 from app.services.llm_client import OpenRouterClient
 from app.services.memory_store import SQLiteMemoryStore
 from app.services.retrieval import RetrievalCoordinator
-from app.services.embedding_service import get_embedding_service
+from app.services.embedding import get_embedding_service
 from app.services.moderation import ModerationService
 from app.agent.loop import AgentLoop
 
