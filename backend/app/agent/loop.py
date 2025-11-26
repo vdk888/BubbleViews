@@ -24,6 +24,7 @@ without tool calls, or max iterations is reached.
 import asyncio
 import json
 import logging
+import math
 import random
 import uuid
 from typing import Dict, List, Optional, Any
@@ -73,6 +74,7 @@ class AgentLoop:
         max_posts_per_cycle: int = 5,
         response_probability: float = 0.3,
         max_conversation_depth: int = 5,
+        engagement_config: Optional[Dict[str, float]] = None,
     ):
         """
         Initialize agent loop with injected dependencies.
@@ -88,6 +90,8 @@ class AgentLoop:
             max_posts_per_cycle: Max posts to process per cycle (default: 5)
             response_probability: Probability of responding to eligible posts (default: 0.3)
             max_conversation_depth: Maximum depth of reply chain to engage in (default: 5)
+            engagement_config: Configuration for engagement-based post selection (optional).
+                Keys: score_weight, comment_weight, min_probability, max_probability, probability_midpoint
         """
         self.reddit_client = reddit_client
         self.llm_client = llm_client
@@ -100,6 +104,13 @@ class AgentLoop:
         self.max_posts_per_cycle = max_posts_per_cycle
         self.response_probability = response_probability
         self.max_conversation_depth = max_conversation_depth
+        self.engagement_config = engagement_config or {
+            "score_weight": 1.0,
+            "comment_weight": 2.0,
+            "min_probability": 0.1,
+            "max_probability": 0.8,
+            "probability_midpoint": 20.0,
+        }
 
         # Internal state
         self._stop_event = asyncio.Event()
@@ -285,6 +296,12 @@ class AgentLoop:
         logger.info(
             f"{len(eligible_posts)} posts eligible for response",
             extra={"persona_id": persona_id, "correlation_id": correlation_id}
+        )
+
+        # Sort by engagement score (descending) to prioritize high-engagement posts
+        eligible_posts.sort(
+            key=lambda p: self._calculate_engagement_score(p),
+            reverse=True
         )
 
         # Limit to max posts per cycle
@@ -1000,6 +1017,53 @@ IMPORTANT:
             "reason": reason
         }
 
+    def _calculate_engagement_score(self, post: Dict[str, Any]) -> float:
+        """
+        Calculate weighted engagement score for a post.
+
+        Formula: score_weight * upvotes + comment_weight * num_comments
+
+        Args:
+            post: Post dictionary from Reddit with 'score' and 'num_comments'
+
+        Returns:
+            Weighted engagement score (higher = more engaging)
+        """
+        score = post.get("score", 1)
+        num_comments = post.get("num_comments", 0)
+
+        score_weight = self.engagement_config.get("score_weight", 1.0)
+        comment_weight = self.engagement_config.get("comment_weight", 2.0)
+
+        return (score_weight * score) + (comment_weight * num_comments)
+
+    def _engagement_probability(self, engagement_score: float) -> float:
+        """
+        Convert engagement score to response probability using sigmoid scaling.
+
+        Low-engagement posts get min_probability, high-engagement posts approach
+        max_probability, with smooth transition around the midpoint.
+
+        Args:
+            engagement_score: Score from _calculate_engagement_score
+
+        Returns:
+            Probability between min_probability and max_probability
+        """
+        min_prob = self.engagement_config.get("min_probability", 0.1)
+        max_prob = self.engagement_config.get("max_probability", 0.8)
+        midpoint = self.engagement_config.get("probability_midpoint", 20.0)
+
+        # Avoid division by zero
+        if midpoint <= 0:
+            midpoint = 20.0
+
+        # Normalize around midpoint and apply sigmoid
+        x = (engagement_score - midpoint) / midpoint
+        sigmoid = 1 / (1 + math.exp(-x * 3))  # steepness factor of 3
+
+        return min_prob + (max_prob - min_prob) * sigmoid
+
     async def should_respond(self, persona_id: str, post: Dict[str, Any]) -> bool:
         """
         Decision phase: Decide if agent should respond to post.
@@ -1007,7 +1071,7 @@ IMPORTANT:
         Checks:
         1. Post is not by this persona (avoid self-replies)
         2. Post matches interest keywords (if configured)
-        3. Random sampling (to limit volume)
+        3. Engagement-weighted sampling (higher engagement = higher probability)
 
         Args:
             persona_id: UUID of persona
@@ -1051,17 +1115,31 @@ IMPORTANT:
                 )
                 return False
 
-        # Check 3: Random sampling
-        if random.random() > self.response_probability:
+        # Check 3: Engagement-weighted sampling
+        engagement_score = self._calculate_engagement_score(post)
+        response_prob = self._engagement_probability(engagement_score)
+
+        if random.random() > response_prob:
             logger.debug(
-                f"Skipping post {post['id']} (random sampling)",
-                extra={"persona_id": persona_id, "post_id": post["id"], "reason": "random_sampling"}
+                f"Skipping post {post['id']} (engagement sampling: score={engagement_score:.1f}, prob={response_prob:.2f})",
+                extra={
+                    "persona_id": persona_id,
+                    "post_id": post["id"],
+                    "reason": "engagement_sampling",
+                    "engagement_score": engagement_score,
+                    "response_probability": response_prob
+                }
             )
             return False
 
         logger.info(
-            f"Post {post['id']} eligible for response",
-            extra={"persona_id": persona_id, "post_id": post["id"]}
+            f"Post {post['id']} eligible for response (engagement={engagement_score:.1f}, prob={response_prob:.2f})",
+            extra={
+                "persona_id": persona_id,
+                "post_id": post["id"],
+                "engagement_score": engagement_score,
+                "response_probability": response_prob
+            }
         )
         return True
 

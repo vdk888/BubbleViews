@@ -107,7 +107,8 @@ Environment Variables:
         '--probability',
         type=float,
         default=0.3,
-        help='Probability of responding to eligible posts (default: 0.3)'
+        help='Base probability of responding to eligible posts (default: 0.3). '
+             'Note: This is overridden by engagement-weighted probability if engagement config is used.'
     )
 
     parser.add_argument(
@@ -115,6 +116,42 @@ Environment Variables:
         type=str,
         default='.env',
         help='Path to .env file (default: .env)'
+    )
+
+    # Engagement-based selection arguments
+    parser.add_argument(
+        '--score-weight',
+        type=float,
+        default=1.0,
+        help='Weight for post upvotes in engagement score (default: 1.0)'
+    )
+
+    parser.add_argument(
+        '--comment-weight',
+        type=float,
+        default=2.0,
+        help='Weight for comment count in engagement score (default: 2.0)'
+    )
+
+    parser.add_argument(
+        '--min-prob',
+        type=float,
+        default=0.1,
+        help='Minimum response probability for low-engagement posts (default: 0.1)'
+    )
+
+    parser.add_argument(
+        '--max-prob',
+        type=float,
+        default=0.8,
+        help='Maximum response probability for high-engagement posts (default: 0.8)'
+    )
+
+    parser.add_argument(
+        '--prob-midpoint',
+        type=float,
+        default=20.0,
+        help='Engagement score at which response probability is ~50%% (default: 20.0)'
     )
 
     return parser.parse_args()
@@ -262,6 +299,15 @@ async def main():
     # Use interval from args, or fall back to settings, or use default
     interval_seconds = args.interval if args.interval is not None else settings.agent_interval_seconds
 
+    # Build engagement config from CLI args
+    engagement_config = {
+        "score_weight": args.score_weight,
+        "comment_weight": args.comment_weight,
+        "min_probability": args.min_prob,
+        "max_probability": args.max_prob,
+        "probability_midpoint": args.prob_midpoint,
+    }
+
     # Create agent loop
     agent_loop = AgentLoop(
         reddit_client=reddit_client,
@@ -272,6 +318,7 @@ async def main():
         interval_seconds=interval_seconds,
         max_posts_per_cycle=args.max_posts,
         response_probability=args.probability,
+        engagement_config=engagement_config,
     )
 
     # Create stop event for graceful shutdown
