@@ -91,12 +91,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Footer */}
-          <div className="mt-6 pt-6 border-t border-[var(--border)]">
-            <p className="text-xs text-[var(--text-secondary)] text-center">
-              Default credentials: admin / changeme123
-            </p>
-          </div>
         </div>
       </div>
     </div>

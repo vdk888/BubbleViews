@@ -225,3 +225,169 @@ class IRedditClient(ABC):
             - Does not throw errors (safe to call anytime)
         """
         pass
+
+    @abstractmethod
+    async def get_inbox_replies(
+        self,
+        limit: int = 25
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch comment replies from inbox.
+
+        Retrieves replies to the authenticated user's comments.
+        Used by the agent loop to detect when users respond to its comments.
+
+        Args:
+            limit: Maximum number of replies to fetch (default: 25)
+                Valid range: 1-100
+
+        Returns:
+            List of reply dictionaries with structure:
+            [
+                {
+                    "id": "abc123",
+                    "body": "Reply text content",
+                    "author": "replying_username",
+                    "parent_id": "t1_parentcomment",
+                    "link_id": "t3_postid",
+                    "subreddit": "SubredditName",
+                    "created_utc": 1700000000,
+                    "score": 5,
+                    "permalink": "/r/subreddit/comments/...",
+                    "is_new": true,
+                    "context": "/r/subreddit/comments/.../comment/?context=3"
+                },
+                ...
+            ]
+
+        Raises:
+            ValueError: If limit out of range
+            ConnectionError: If Reddit API is unreachable after retries
+            PermissionError: If authentication fails or rate limit exceeded
+
+        Note:
+            - Returns only comment replies (not post replies)
+            - Rate limiting: 60 requests/minute token bucket
+            - Retries with exponential backoff: 1s, 2s, 4s (max 3 attempts)
+            - Deleted/removed replies are filtered out
+            - is_new flag indicates unread status
+        """
+        pass
+
+    @abstractmethod
+    async def get_mentions(
+        self,
+        limit: int = 25
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch username mentions from inbox.
+
+        Retrieves comments that mention the authenticated user's username.
+        Useful for detecting when users directly address the agent.
+
+        Args:
+            limit: Maximum number of mentions to fetch (default: 25)
+                Valid range: 1-100
+
+        Returns:
+            List of mention dictionaries with structure:
+            [
+                {
+                    "id": "xyz789",
+                    "body": "Comment text mentioning u/username",
+                    "author": "mentioning_username",
+                    "parent_id": "t3_postid or t1_commentid",
+                    "link_id": "t3_postid",
+                    "subreddit": "SubredditName",
+                    "created_utc": 1700000000,
+                    "score": 3,
+                    "permalink": "/r/subreddit/comments/...",
+                    "is_new": true,
+                    "context": "/r/subreddit/comments/.../comment/?context=3"
+                },
+                ...
+            ]
+
+        Raises:
+            ValueError: If limit out of range
+            ConnectionError: If Reddit API is unreachable after retries
+            PermissionError: If authentication fails or rate limit exceeded
+
+        Note:
+            - Mentions are identified by u/username patterns
+            - Rate limiting: 60 requests/minute token bucket
+            - Retries with exponential backoff: 1s, 2s, 4s (max 3 attempts)
+            - Deleted/removed mentions are filtered out
+            - is_new flag indicates unread status
+        """
+        pass
+
+    @abstractmethod
+    async def mark_read(
+        self,
+        item_ids: List[str]
+    ) -> None:
+        """
+        Mark inbox items as read.
+
+        Marks specified inbox items (replies, mentions) as read
+        to prevent reprocessing in subsequent inbox fetches.
+
+        Args:
+            item_ids: List of Reddit fullnames to mark as read
+                Format: "t1_xxx" for comments
+                Example: ["t1_abc123", "t1_def456"]
+
+        Raises:
+            ValueError: If item_ids is empty or contains invalid IDs
+            ConnectionError: If Reddit API is unreachable after retries
+            PermissionError: If authentication fails
+
+        Note:
+            - Idempotent: marking already-read items has no effect
+            - Rate limiting: 60 requests/minute token bucket
+            - Items must belong to authenticated user's inbox
+            - Batch operation: processes all IDs in single API call
+        """
+        pass
+
+    @abstractmethod
+    async def get_comment(
+        self,
+        comment_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a specific comment by ID.
+
+        Retrieves details of a single comment. Used for getting
+        the agent's original comment when processing replies.
+
+        Args:
+            comment_id: Reddit comment ID (with or without t1_ prefix)
+                Example: "abc123" or "t1_abc123"
+
+        Returns:
+            Comment dictionary if found:
+            {
+                "id": "abc123",
+                "body": "Comment text content",
+                "author": "username",
+                "parent_id": "t3_postid or t1_commentid",
+                "link_id": "t3_postid",
+                "subreddit": "SubredditName",
+                "created_utc": 1700000000,
+                "score": 10,
+                "permalink": "/r/subreddit/comments/..."
+            }
+            Returns None if comment is deleted, removed, or not found.
+
+        Raises:
+            ConnectionError: If Reddit API is unreachable after retries
+            PermissionError: If rate limit exceeded
+
+        Note:
+            - Rate limiting: 60 requests/minute token bucket
+            - Retries with exponential backoff
+            - Handles deleted/removed comments gracefully (returns None)
+        """
+        pass

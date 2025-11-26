@@ -181,6 +181,66 @@ Follow structured prompt pattern:
 - **Keep responses concise**, cite sources when summarizing, avoid banned/controversial content unless persona explicitly allows.
 - **Rate limiting**: Token bucket enforced in `rate_limiter.py`; retries with exponential backoff (1s, 2s, 4s) + jitter.
 
+## Reply Detection & Conversation Handling
+
+The agent automatically detects and responds to replies to its comments via the Reddit inbox API.
+
+### Reply Detection Flow
+
+1. **Perception Phase** (`perceive_replies`):
+   - Fetch inbox replies via `reddit_client.get_inbox_replies()`
+   - Filter to only new/unread replies (`is_new: true`)
+   - Filter out already-processed replies (check `memory_store.search_interactions`)
+   - Skip replies to posts (only process replies to our comments)
+   - Fetch our original comment for context (`reddit_client.get_comment`)
+   - Calculate conversation depth to enforce limits
+   - Mark skipped replies as read
+
+2. **Processing Phase** (`process_reply`):
+   - Build conversation context (our comment + their reply)
+   - Use existing retrieval pipeline for beliefs/past interactions
+   - Generate response through LLM with conversation-aware prompting
+   - Run through moderation (same as posts)
+   - Post immediately or queue for review
+
+### New IRedditClient Methods
+
+| Method | Purpose |
+|--------|---------|
+| `get_inbox_replies(limit)` | Fetch comment replies from inbox |
+| `get_mentions(limit)` | Fetch username mentions |
+| `mark_read(item_ids)` | Mark inbox items as read |
+| `get_comment(comment_id)` | Fetch a specific comment by ID |
+
+### Conversation Context Building
+
+When processing a reply, the agent includes:
+- **Our original comment**: What we said that prompted the reply
+- **Their reply**: What they're responding with
+- **Conversation depth**: How deep in the reply chain we are
+- **Beliefs and past statements**: From existing retrieval pipeline
+
+### Conversation Depth Limits
+
+- **Default max depth**: 5 levels (configurable via `max_conversation_depth`)
+- **Purpose**: Prevent infinite reply chains and token waste
+- **Behavior**: Replies beyond max depth are marked as read but not responded to
+- **Configuration**: Set in `AgentLoop` constructor or `run_agent()` function
+
+### Interaction Type
+
+Replies are logged with `interaction_type="reply"` in the memory store, with additional metadata:
+- `conversation_depth`: Depth in the reply chain
+- `in_reply_to`: First 200 chars of the comment we're replying to
+- `parent_id`: Reddit ID of the comment we're replying to
+
+### Best Practices
+
+- **Keep replies shorter than initial comments**: 1-3 paragraphs max
+- **Acknowledge what they said**: Continue the conversation naturally
+- **Stay consistent**: Reference your previous comment if relevant
+- **Don't repeat yourself**: The LLM sees your original comment in context
+
 ## Safety, Refusals, and Tone
 
 - **Use Anthropic safety defaults**: Decline illegal or harmful content; de-escalate heated threads; avoid medical or financial advice unless persona is qualified.
@@ -242,5 +302,5 @@ Expect: JSON {
 - [Diagram](docs/architecture/system-diagram.md) - Diagram of all flows
 ---
 
-**Last updated**: 2025-11-24
-**Version**: MVP (Weeks 1-4 scope)
+**Last updated**: 2025-11-26
+**Version**: MVP (Weeks 1-4 scope) + Reply Detection

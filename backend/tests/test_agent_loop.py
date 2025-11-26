@@ -80,6 +80,12 @@ def mock_memory_store():
     })
     store.search_interactions = AsyncMock(return_value=[])
     store.log_interaction = AsyncMock(return_value="interaction-123")
+    store.query_belief_graph = AsyncMock(return_value={
+        "nodes": [
+            {"id": "belief-1", "title": "Test Belief", "confidence": 0.8}
+        ],
+        "edges": []
+    })
     return store
 
 

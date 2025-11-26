@@ -380,6 +380,236 @@ class AsyncPRAWClient(IRedditClient):
             logger.error(f"Credentials validation failed: {e}")
             return False
 
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(ConnectionError, asyncio.TimeoutError, RedditAPIException)
+    )
+    @retry_on_rate_limit(max_retries=2, base_delay=60.0)
+    async def get_inbox_replies(
+        self,
+        limit: int = 25
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch comment replies from inbox.
+
+        See IRedditClient.get_inbox_replies for full documentation.
+        """
+        if limit < 1 or limit > 100:
+            raise ValueError(f"Limit must be 1-100, got {limit}")
+
+        # Acquire rate limit token
+        await self.rate_limiter.acquire()
+
+        replies = []
+
+        try:
+            # Fetch comment replies from inbox
+            async for item in self.reddit.inbox.comment_replies(limit=limit):
+                try:
+                    reply_dict = await self._comment_to_dict(item)
+                    if reply_dict:
+                        # Add inbox-specific fields
+                        reply_dict["is_new"] = item.new
+                        reply_dict["context"] = getattr(item, "context", "")
+                        replies.append(reply_dict)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to process inbox reply {item.id}: {e}"
+                    )
+                    continue
+
+        except (ConnectionError, asyncio.TimeoutError, RedditAPIException):
+            # Re-raise transient errors to trigger retry decorator
+            raise
+        except Exception as e:
+            logger.error(f"Failed to fetch inbox replies: {e}")
+            raise ConnectionError(f"Failed to fetch inbox replies: {e}") from e
+
+        logger.info(f"Fetched {len(replies)} inbox replies")
+        return replies
+
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(ConnectionError, asyncio.TimeoutError, RedditAPIException)
+    )
+    @retry_on_rate_limit(max_retries=2, base_delay=60.0)
+    async def get_mentions(
+        self,
+        limit: int = 25
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch username mentions from inbox.
+
+        See IRedditClient.get_mentions for full documentation.
+        """
+        if limit < 1 or limit > 100:
+            raise ValueError(f"Limit must be 1-100, got {limit}")
+
+        # Acquire rate limit token
+        await self.rate_limiter.acquire()
+
+        mentions = []
+
+        try:
+            # Fetch username mentions from inbox
+            async for item in self.reddit.inbox.mentions(limit=limit):
+                try:
+                    mention_dict = await self._comment_to_dict(item)
+                    if mention_dict:
+                        # Add inbox-specific fields
+                        mention_dict["is_new"] = item.new
+                        mention_dict["context"] = getattr(item, "context", "")
+                        mentions.append(mention_dict)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to process mention {item.id}: {e}"
+                    )
+                    continue
+
+        except (ConnectionError, asyncio.TimeoutError, RedditAPIException):
+            # Re-raise transient errors to trigger retry decorator
+            raise
+        except Exception as e:
+            logger.error(f"Failed to fetch mentions: {e}")
+            raise ConnectionError(f"Failed to fetch mentions: {e}") from e
+
+        logger.info(f"Fetched {len(mentions)} mentions")
+        return mentions
+
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(ConnectionError, asyncio.TimeoutError, RedditAPIException)
+    )
+    @retry_on_rate_limit(max_retries=2, base_delay=60.0)
+    async def mark_read(
+        self,
+        item_ids: List[str]
+    ) -> None:
+        """
+        Mark inbox items as read.
+
+        See IRedditClient.mark_read for full documentation.
+        """
+        if not item_ids:
+            raise ValueError("item_ids cannot be empty")
+
+        # Validate all IDs have valid format
+        for item_id in item_ids:
+            if not item_id or not item_id.startswith('t1_'):
+                raise ValueError(
+                    f"Invalid item_id format: '{item_id}'. Must start with 't1_'"
+                )
+
+        # Acquire rate limit token
+        await self.rate_limiter.acquire()
+
+        try:
+            # Fetch the actual comment objects for marking as read
+            items_to_mark = []
+            for item_id in item_ids:
+                comment = await self.reddit.comment(item_id[3:])
+                items_to_mark.append(comment)
+
+            # Mark items as read
+            if items_to_mark:
+                await self.reddit.inbox.mark_read(items_to_mark)
+
+            logger.info(f"Marked {len(item_ids)} inbox items as read")
+
+        except (ConnectionError, asyncio.TimeoutError, RedditAPIException):
+            # Re-raise transient errors to trigger retry decorator
+            raise
+        except Exception as e:
+            logger.error(f"Failed to mark items as read: {e}")
+            raise ConnectionError(f"Failed to mark items as read: {e}") from e
+
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(ConnectionError, asyncio.TimeoutError, RedditAPIException)
+    )
+    @retry_on_rate_limit(max_retries=2, base_delay=60.0)
+    async def get_comment(
+        self,
+        comment_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a specific comment by ID.
+
+        See IRedditClient.get_comment for full documentation.
+        """
+        # Strip t1_ prefix if present
+        if comment_id.startswith('t1_'):
+            comment_id = comment_id[3:]
+
+        # Acquire rate limit token
+        await self.rate_limiter.acquire()
+
+        try:
+            comment = await self.reddit.comment(comment_id)
+
+            # Force fetch to load comment data
+            await comment.load()
+
+            return await self._comment_to_dict(comment)
+
+        except (ConnectionError, asyncio.TimeoutError, RedditAPIException):
+            # Re-raise transient errors to trigger retry decorator
+            raise
+        except Exception as e:
+            logger.warning(f"Failed to fetch comment {comment_id}: {e}")
+            return None
+
+    async def _comment_to_dict(
+        self,
+        comment: Comment
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Convert asyncpraw Comment to dictionary.
+
+        Handles deleted/removed comments gracefully and extracts
+        relevant fields for the agent.
+
+        Args:
+            comment: asyncpraw Comment object
+
+        Returns:
+            Dictionary with comment data, or None if comment is deleted/removed
+
+        Note:
+            - Filters out deleted/removed content
+            - Filters out suspended user comments
+            - Extracts only fields relevant to the agent
+        """
+        try:
+            # Check if comment is deleted or removed
+            if comment.body in ['[deleted]', '[removed]']:
+                return None
+
+            # Check if author is suspended or deleted
+            if comment.author is None or str(comment.author) == '[deleted]':
+                return None
+
+            # Extract comment data
+            return {
+                'id': comment.id,
+                'body': comment.body or '',
+                'author': str(comment.author),
+                'parent_id': comment.parent_id,
+                'link_id': comment.link_id,
+                'subreddit': str(comment.subreddit),
+                'created_utc': int(comment.created_utc),
+                'score': comment.score,
+                'permalink': comment.permalink,
+            }
+
+        except Exception as e:
+            logger.warning(f"Failed to convert comment to dict: {e}")
+            return None
+
     async def _submission_to_dict(
         self,
         submission: Submission

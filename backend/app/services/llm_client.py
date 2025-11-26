@@ -143,12 +143,15 @@ class OpenRouterClient(ILLMClient):
             }
         )
 
+        # Build user content - only include context if non-empty
+        if context:
+            user_content = f"Context: {json.dumps(context)}\n\nMessage: {user_message}"
+        else:
+            user_content = user_message
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": f"Context: {json.dumps(context)}\n\nMessage: {user_message}"
-            }
+            {"role": "user", "content": user_content}
         ]
 
         try:

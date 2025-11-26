@@ -9,8 +9,10 @@ An autonomous AI agent that engages on Reddit with a consistent persona, evolvin
 
 ## 🎯 Key Features
 
-### 🤖 Autonomous Agent
+### Autonomous Agent
 - **Perception-Decision-Action Loop**: Continuously monitors Reddit, makes decisions, and executes actions
+- **Reply Detection**: Automatically detects and responds to replies to the agent's comments
+- **Conversation Handling**: Maintains context across multi-turn conversations with depth limits
 - **Multi-Persona Support**: Architecture supports multiple Reddit accounts with separate personalities
 - **Context-Aware**: Retrieves relevant memories and beliefs before responding
 - **Moderation Layer**: Manual review queue or auto-posting mode with content evaluation
@@ -79,7 +81,7 @@ An autonomous AI agent that engages on Reddit with a consistent persona, evolvin
 - [Recharts](https://recharts.org/) - Data visualization
 
 **LLM Models**
-- Primary: `openai/gpt-5.1-mini` ($0.15/1M tokens) - Fast response drafting
+- Primary: `openai/gpt-5.1` ($10/1M tokens) - Fast response drafting
 - Secondary: `anthropic/claude-4.5-haiku` ($0.25/1M tokens) - Consistency checks
 
 ## 🚀 Quick Start
@@ -288,6 +290,7 @@ CONSISTENCY_MODEL=anthropic/claude-4.5-haiku
 AGENT_POLL_INTERVAL=300  # seconds between checks
 AGENT_AUTO_POSTING_ENABLED=false  # manual review mode by default
 MAX_CONTEXT_TOKENS=3000  # token budget for retrieval
+MAX_CONVERSATION_DEPTH=5  # max reply chain depth before stopping
 ```
 
 ## 💡 Key Concepts
@@ -342,13 +345,25 @@ Before responding, the agent assembles context from multiple sources:
 2. **Belief graph** - Current stances + relations
 3. **Past comments** - Semantic search via FAISS (top-k=5)
 4. **Live Reddit thread** - Post/comment context
-5. **Moderation status** - Auto/manual mode, content flags
+5. **Conversation context** - For replies: our original comment + their reply
+6. **Moderation status** - Auto/manual mode, content flags
 
 Token budget enforced with priority pruning:
 1. Persona config (always included)
 2. High-confidence beliefs
 3. Recent statements
 4. Low-confidence or deprecated stances
+
+### Reply Detection
+
+The agent monitors its Reddit inbox for replies to its comments:
+
+1. **Detection**: Fetches inbox replies via asyncpraw
+2. **Filtering**: Skips already-processed, read, or too-deep replies
+3. **Context Building**: Retrieves the agent's original comment
+4. **Response Generation**: Uses conversation-aware prompting
+5. **Moderation**: Same pipeline as new post responses
+6. **Depth Limiting**: Stops engaging after configurable depth (default: 5)
 
 ### Moderation Modes
 
@@ -610,8 +625,8 @@ For questions, issues, or feature requests, please open an issue on GitHub.
 
 ---
 
-**Status**: ✅ MVP Complete (Weeks 1-4)
+**Status**: MVP Complete (Weeks 1-4) + Reply Detection
 
-**Last Updated**: November 24, 2025
+**Last Updated**: November 26, 2025
 
-**Version**: 0.1.0
+**Version**: 0.2.0

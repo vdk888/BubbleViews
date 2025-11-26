@@ -50,6 +50,7 @@ class AgentLoop:
 
     Orchestrates the complete agent workflow:
     - Monitors Reddit for relevant posts
+    - Detects and responds to replies to agent's comments
     - Retrieves context from memory and belief graph
     - Generates draft responses using LLM
     - Checks consistency with beliefs
@@ -71,6 +72,7 @@ class AgentLoop:
         interval_seconds: int = 14400,
         max_posts_per_cycle: int = 5,
         response_probability: float = 0.3,
+        max_conversation_depth: int = 5,
     ):
         """
         Initialize agent loop with injected dependencies.
@@ -85,6 +87,7 @@ class AgentLoop:
             interval_seconds: Seconds between perception cycles (default: 14400 = 4 hours)
             max_posts_per_cycle: Max posts to process per cycle (default: 5)
             response_probability: Probability of responding to eligible posts (default: 0.3)
+            max_conversation_depth: Maximum depth of reply chain to engage in (default: 5)
         """
         self.reddit_client = reddit_client
         self.llm_client = llm_client
@@ -96,6 +99,7 @@ class AgentLoop:
         self.interval_seconds = interval_seconds
         self.max_posts_per_cycle = max_posts_per_cycle
         self.response_probability = response_probability
+        self.max_conversation_depth = max_conversation_depth
 
         # Internal state
         self._stop_event = asyncio.Event()
@@ -205,9 +209,11 @@ class AgentLoop:
         Execute one complete agent loop cycle.
 
         Steps:
-        1. Perceive new posts
-        2. Filter and decide which to respond to
-        3. For each eligible post:
+        1. Perceive replies to agent's comments (inbox)
+        2. Process eligible replies
+        3. Perceive new posts
+        4. Filter and decide which to respond to
+        5. For each eligible post:
            a. Retrieve context
            b. Generate draft
            c. Check consistency
@@ -221,7 +227,34 @@ class AgentLoop:
         Raises:
             Exception: Propagates any errors for cycle-level handling
         """
-        # Phase 1: Perception
+        # Phase 1a: Perceive replies to our comments
+        replies = await self.perceive_replies(persona_id)
+
+        if replies:
+            logger.info(
+                f"Perceived {len(replies)} new replies to process",
+                extra={"persona_id": persona_id, "correlation_id": correlation_id}
+            )
+
+            # Process each reply
+            for reply in replies:
+                reply_correlation_id = f"{correlation_id}-reply-{reply['id']}"
+                try:
+                    await self.process_reply(persona_id, reply, reply_correlation_id)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to process reply {reply['id']}: {e}",
+                        extra={"persona_id": persona_id, "correlation_id": reply_correlation_id},
+                        exc_info=True
+                    )
+                    # Continue with next reply
+        else:
+            logger.debug(
+                f"No new replies found in cycle",
+                extra={"persona_id": persona_id, "correlation_id": correlation_id}
+            )
+
+        # Phase 1b: Perception - new posts
         posts = await self.perceive(persona_id)
 
         if not posts:
@@ -324,6 +357,648 @@ class AgentLoop:
         )
 
         return unseen_posts
+
+    async def perceive_replies(self, persona_id: str) -> List[Dict[str, Any]]:
+        """
+        Perception phase: Check for replies to agent's comments.
+
+        Fetches inbox replies, filters out already-processed replies,
+        and fetches the agent's original comment for context.
+
+        Args:
+            persona_id: UUID of persona
+
+        Returns:
+            List of new reply dictionaries with conversation context:
+            [
+                {
+                    "id": "reply_id",
+                    "body": "Reply text",
+                    "author": "replying_user",
+                    "parent_id": "t1_our_comment_id",
+                    "link_id": "t3_post_id",
+                    "subreddit": "SubredditName",
+                    "created_utc": 1700000000,
+                    "score": 5,
+                    "permalink": "/r/...",
+                    "is_new": true,
+                    "our_comment": {...},  # Our original comment dict
+                    "conversation_depth": 2  # Depth in the reply chain
+                },
+                ...
+            ]
+
+        Raises:
+            ConnectionError: If Reddit API unreachable
+        """
+        # Fetch inbox replies
+        all_replies = await self.reddit_client.get_inbox_replies(limit=25)
+
+        if not all_replies:
+            return []
+
+        # Filter to only new/unread replies
+        new_replies = [r for r in all_replies if r.get("is_new", False)]
+
+        if not new_replies:
+            logger.debug(
+                f"No new inbox replies for persona {persona_id}",
+                extra={"persona_id": persona_id, "total_replies": len(all_replies)}
+            )
+            return []
+
+        # Filter out already-processed replies and enrich with context
+        eligible_replies = []
+        replies_to_mark_read = []
+
+        for reply in new_replies:
+            reply_reddit_id = f"t1_{reply['id']}"
+
+            # Check if we've already responded to this reply
+            existing_interactions = await self.memory_store.search_interactions(
+                persona_id=persona_id,
+                reddit_id=reply_reddit_id
+            )
+
+            if existing_interactions:
+                # Already processed, just mark as read
+                replies_to_mark_read.append(reply_reddit_id)
+                continue
+
+            # Get our original comment (the parent of this reply)
+            parent_id = reply.get("parent_id", "")
+            if not parent_id.startswith("t1_"):
+                # Reply is to a post, not our comment - skip
+                replies_to_mark_read.append(reply_reddit_id)
+                continue
+
+            # Fetch our original comment
+            our_comment = await self.reddit_client.get_comment(parent_id)
+            if not our_comment:
+                # Our comment was deleted/removed
+                replies_to_mark_read.append(reply_reddit_id)
+                continue
+
+            # Calculate conversation depth by counting parent chain
+            conversation_depth = await self._calculate_conversation_depth(parent_id)
+
+            # Check max conversation depth
+            if conversation_depth >= self.max_conversation_depth:
+                logger.debug(
+                    f"Skipping reply {reply['id']} - max conversation depth ({self.max_conversation_depth}) reached",
+                    extra={"persona_id": persona_id, "depth": conversation_depth}
+                )
+                replies_to_mark_read.append(reply_reddit_id)
+                continue
+
+            # Enrich reply with context
+            reply["our_comment"] = our_comment
+            reply["conversation_depth"] = conversation_depth
+            eligible_replies.append(reply)
+
+        # Mark processed replies as read
+        if replies_to_mark_read:
+            try:
+                await self.reddit_client.mark_read(replies_to_mark_read)
+            except Exception as e:
+                logger.warning(f"Failed to mark replies as read: {e}")
+
+        logger.debug(
+            f"Perceived {len(all_replies)} inbox replies, {len(eligible_replies)} eligible",
+            extra={"persona_id": persona_id}
+        )
+
+        return eligible_replies
+
+    async def _calculate_conversation_depth(
+        self,
+        comment_id: str
+    ) -> int:
+        """
+        Calculate the depth of a comment in the reply chain.
+
+        Counts how many parent comments exist between this comment
+        and the original post.
+
+        Args:
+            comment_id: Reddit comment ID (with t1_ prefix)
+
+        Returns:
+            Depth in the reply chain (0 = direct reply to post, 1 = reply to comment, etc.)
+        """
+        depth = 0
+        current_id = comment_id
+        max_depth_check = 20  # Safety limit
+
+        while depth < max_depth_check:
+            if current_id.startswith("t3_"):
+                # Reached the post
+                break
+
+            if not current_id.startswith("t1_"):
+                break
+
+            # Fetch the parent comment
+            comment = await self.reddit_client.get_comment(current_id)
+            if not comment:
+                break
+
+            parent_id = comment.get("parent_id", "")
+            if not parent_id:
+                break
+
+            current_id = parent_id
+            depth += 1
+
+        return depth
+
+    async def process_reply(
+        self,
+        persona_id: str,
+        reply: Dict[str, Any],
+        correlation_id: str
+    ) -> Dict[str, Any]:
+        """
+        Process a reply to one of the agent's comments.
+
+        Builds conversation context including the original comment and the reply,
+        uses the existing retrieval pipeline for beliefs/past interactions,
+        generates a response, runs it through moderation, and posts or queues it.
+
+        Args:
+            persona_id: UUID of persona
+            reply: Reply dictionary with conversation context from perceive_replies
+            correlation_id: Request correlation ID
+
+        Returns:
+            Result dict:
+            {
+                "action": "posted" | "queued" | "dropped",
+                "reddit_id": "t1_..." (if posted),
+                "queue_id": "..." (if queued),
+                "reason": "..." (if dropped)
+            }
+
+        Raises:
+            Exception: Propagates any processing errors
+        """
+        our_comment = reply.get("our_comment", {})
+        conversation_depth = reply.get("conversation_depth", 1)
+
+        logger.info(
+            f"Processing reply {reply['id']} to our comment {our_comment.get('id', 'unknown')}",
+            extra={
+                "persona_id": persona_id,
+                "correlation_id": correlation_id,
+                "conversation_depth": conversation_depth
+            }
+        )
+
+        # Build thread context for retrieval
+        thread_context = {
+            "title": f"Reply conversation in r/{reply.get('subreddit', '')}",
+            "body": "",  # Will be populated with conversation context
+            "subreddit": reply.get("subreddit", ""),
+            "reddit_id": reply["id"],
+            "url": f"https://reddit.com{reply.get('permalink', '')}",
+            "is_reply": True,
+            "conversation_context": {
+                "our_comment": our_comment.get("body", ""),
+                "their_reply": reply.get("body", ""),
+                "depth": conversation_depth
+            }
+        }
+
+        # Assemble context using existing retrieval pipeline
+        context = await self.retrieval.assemble_context(
+            persona_id=persona_id,
+            thread_context=thread_context
+        )
+
+        logger.debug(
+            f"Assembled context for reply {reply['id']}: {context.get('token_count', 0)} tokens",
+            extra={"persona_id": persona_id, "correlation_id": correlation_id}
+        )
+
+        # Generate draft response for the reply
+        draft = await self._generate_reply_draft(
+            persona_id=persona_id,
+            reply=reply,
+            context=context,
+            correlation_id=correlation_id
+        )
+
+        logger.info(
+            f"Generated draft for reply {reply['id']}: {len(draft['text'])} chars",
+            extra={
+                "persona_id": persona_id,
+                "correlation_id": correlation_id,
+                "tokens_in": draft["tokens_in"],
+                "tokens_out": draft["tokens_out"],
+                "cost": draft["cost"],
+            }
+        )
+
+        # Check consistency with beliefs
+        consistency_result = await self.check_draft_consistency(
+            draft["text"],
+            context.get("beliefs", []),
+            correlation_id
+        )
+
+        if not consistency_result["is_consistent"]:
+            logger.warning(
+                f"Reply draft for {reply['id']} conflicts with beliefs: {consistency_result['explanation']}",
+                extra={
+                    "persona_id": persona_id,
+                    "correlation_id": correlation_id,
+                    "conflicts": consistency_result["conflicts"]
+                }
+            )
+
+        # Moderate the draft
+        decision = await self._moderate_reply_draft(
+            persona_id=persona_id,
+            draft=draft["text"],
+            reply=reply,
+            correlation_id=correlation_id
+        )
+
+        logger.info(
+            f"Moderation decision for reply {reply['id']}: {decision['action']}",
+            extra={"persona_id": persona_id, "correlation_id": correlation_id, "decision": decision}
+        )
+
+        # Execute action
+        result = await self._execute_reply_action(
+            persona_id=persona_id,
+            draft=draft["text"],
+            reply=reply,
+            decision=decision,
+            correlation_id=correlation_id
+        )
+
+        # Mark the reply as read after processing
+        try:
+            await self.reddit_client.mark_read([f"t1_{reply['id']}"])
+        except Exception as e:
+            logger.warning(f"Failed to mark reply {reply['id']} as read: {e}")
+
+        return result
+
+    async def _generate_reply_draft(
+        self,
+        persona_id: str,
+        reply: Dict[str, Any],
+        context: Dict[str, Any],
+        correlation_id: str
+    ) -> Dict[str, Any]:
+        """
+        Generate a draft response to a reply.
+
+        Similar to generate_draft but with conversation-specific prompting.
+
+        Args:
+            persona_id: UUID of persona
+            reply: Reply dictionary with our_comment context
+            context: Assembled context from retrieval
+            correlation_id: Request correlation ID
+
+        Returns:
+            Draft response dict (same structure as generate_draft)
+        """
+        # Load persona
+        persona = await self.memory_store.get_persona(persona_id)
+
+        # Build system prompt
+        config = persona.get("config", {})
+        system_prompt = self._build_system_prompt(config)
+
+        # Assemble rich prompt from context
+        assembled_prompt = await self.retrieval.assemble_prompt(persona, context)
+
+        # Build conversation context
+        our_comment = reply.get("our_comment", {})
+        conversation_depth = reply.get("conversation_depth", 1)
+
+        # User message with conversation context
+        user_message = f"""
+{assembled_prompt}
+
+---
+
+**CONVERSATION CONTEXT:**
+
+**Your previous comment** (what you said):
+```
+{our_comment.get('body', '[Comment not available]')}
+```
+
+**Their reply** (what they're responding with):
+```
+{reply.get('body', '')}
+```
+
+**Conversation depth**: {conversation_depth} levels deep in r/{reply.get('subreddit', '')}
+
+---
+
+**Task**: Draft a SHORT Reddit reply (1-3 paragraphs max) responding to their comment above.
+
+IMPORTANT:
+- You are continuing a conversation - acknowledge what they said
+- Be concise - real Reddit conversations don't have long responses
+- Stay consistent with what you said in your previous comment
+- Follow your writing rules exactly
+- Maintain your convictions and beliefs
+- Output ONLY the reply text, nothing else
+"""
+
+        # Generate response using LLM
+        response = await self.llm_client.generate_response(
+            system_prompt=system_prompt,
+            context={},
+            user_message=user_message,
+            tools=AGENT_TOOLS,
+            temperature=0.7,
+            max_tokens=128000,
+            correlation_id=correlation_id
+        )
+
+        # Track metrics
+        total_tokens_in = response.get("tokens_in", 0)
+        total_tokens_out = response.get("tokens_out", 0)
+        total_cost = response.get("cost", 0.0)
+        tool_calls_made = 0
+
+        # Build messages for potential tool call continuation
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+
+        if response.get("tool_calls"):
+            messages.append({
+                "role": "assistant",
+                "content": response.get("text", ""),
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": tc["type"],
+                        "function": tc["function"]
+                    }
+                    for tc in response["tool_calls"]
+                ]
+            })
+
+        # Handle tool calls
+        iteration = 0
+        while response.get("tool_calls") and iteration < MAX_TOOL_ITERATIONS:
+            iteration += 1
+            tool_calls = response["tool_calls"]
+            tool_calls_made += len(tool_calls)
+
+            logger.info(
+                f"Processing {len(tool_calls)} tool call(s) for reply (iteration {iteration})",
+                extra={
+                    "correlation_id": correlation_id,
+                    "tool_names": [tc["function"]["name"] for tc in tool_calls],
+                }
+            )
+
+            tool_results = await self.tool_executor.execute_tool_calls(
+                tool_calls=tool_calls,
+                correlation_id=correlation_id
+            )
+
+            response = await self.llm_client.continue_with_tool_results(
+                messages=messages,
+                tool_results=tool_results,
+                tools=AGENT_TOOLS,
+                temperature=0.7,
+                max_tokens=128000,
+                correlation_id=correlation_id
+            )
+
+            total_tokens_in += response.get("tokens_in", 0)
+            total_tokens_out += response.get("tokens_out", 0)
+            total_cost += response.get("cost", 0.0)
+
+            if response.get("tool_calls"):
+                for result in tool_results:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": result["tool_call_id"],
+                        "content": result["content"]
+                    })
+                messages.append({
+                    "role": "assistant",
+                    "content": response.get("text", ""),
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": tc["type"],
+                            "function": tc["function"]
+                        }
+                        for tc in response["tool_calls"]
+                    ]
+                })
+
+        return {
+            "text": response.get("text", ""),
+            "model": response.get("model", "unknown"),
+            "tokens_in": total_tokens_in,
+            "tokens_out": total_tokens_out,
+            "total_tokens": total_tokens_in + total_tokens_out,
+            "cost": total_cost,
+            "tool_calls_made": tool_calls_made,
+            "finish_reason": response.get("finish_reason", "unknown"),
+        }
+
+    async def _moderate_reply_draft(
+        self,
+        persona_id: str,
+        draft: str,
+        reply: Dict[str, Any],
+        correlation_id: str
+    ) -> Dict[str, Any]:
+        """
+        Moderate a reply draft and decide action.
+
+        Args:
+            persona_id: UUID of persona
+            draft: Draft text to moderate
+            reply: Reply dictionary
+            correlation_id: Request correlation ID
+
+        Returns:
+            Decision dict (same structure as moderate_draft)
+        """
+        context = {
+            "subreddit": reply.get("subreddit", ""),
+            "post_type": "reply",
+            "parent_id": f"t1_{reply['id']}",
+        }
+
+        evaluation = await self.moderation.evaluate_content(
+            persona_id=persona_id,
+            content=draft,
+            context=context
+        )
+
+        auto_enabled = await self.moderation.is_auto_posting_enabled(persona_id)
+
+        if evaluation["action"] == "block":
+            action = "drop"
+            logger.warning(
+                f"Reply draft blocked by moderation: {evaluation['flags']}",
+                extra={"persona_id": persona_id, "correlation_id": correlation_id}
+            )
+        elif not auto_enabled or evaluation.get("flagged", False):
+            action = "queue"
+        else:
+            action = "post_now"
+
+        return {
+            "action": action,
+            "evaluation": evaluation,
+            "auto_posting_enabled": auto_enabled
+        }
+
+    async def _execute_reply_action(
+        self,
+        persona_id: str,
+        draft: str,
+        reply: Dict[str, Any],
+        decision: Dict[str, Any],
+        correlation_id: str
+    ) -> Dict[str, Any]:
+        """
+        Execute action based on moderation decision for a reply.
+
+        Args:
+            persona_id: UUID of persona
+            draft: Draft text
+            reply: Reply dictionary
+            decision: Decision dict from _moderate_reply_draft
+            correlation_id: Request correlation ID
+
+        Returns:
+            Result dict with action taken
+        """
+        action = decision["action"]
+        parent_id = f"t1_{reply['id']}"  # Reply to their comment
+
+        if action == "post_now":
+            try:
+                reddit_id = await self.reddit_client.reply(
+                    parent_id=parent_id,
+                    content=draft
+                )
+
+                # Log interaction
+                await self.memory_store.log_interaction(
+                    persona_id=persona_id,
+                    content=draft,
+                    interaction_type="reply",
+                    metadata={
+                        "reddit_id": reddit_id,
+                        "parent_id": parent_id,
+                        "subreddit": reply.get("subreddit", ""),
+                        "correlation_id": correlation_id,
+                        "auto_posted": True,
+                        "conversation_depth": reply.get("conversation_depth", 1),
+                        "in_reply_to": reply.get("body", "")[:200]  # First 200 chars for context
+                    }
+                )
+
+                logger.info(
+                    f"Posted reply {reddit_id} to Reddit",
+                    extra={"persona_id": persona_id, "correlation_id": correlation_id}
+                )
+
+                return {
+                    "action": "posted",
+                    "reddit_id": reddit_id
+                }
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to post reply to Reddit: {e}",
+                    extra={"persona_id": persona_id, "correlation_id": correlation_id},
+                    exc_info=True
+                )
+                action = "queue"
+
+        if action == "queue":
+            # Analyze interaction for belief evolution proposals
+            our_comment = reply.get("our_comment", {})
+            thread_context = {
+                "subreddit": reply.get("subreddit", ""),
+                "title": f"Reply conversation",
+                "body": reply.get("body", ""),
+                "parent_comment": our_comment.get("body", "")
+            }
+
+            belief_proposals = await analyze_interaction_for_beliefs(
+                persona_id=persona_id,
+                draft_content=draft,
+                thread_context=thread_context,
+                llm_client=self.llm_client,
+                memory_store=self.memory_store,
+                correlation_id=correlation_id
+            )
+
+            metadata = {
+                "post_type": "reply",
+                "target_subreddit": reply.get("subreddit", ""),
+                "parent_id": parent_id,
+                "correlation_id": correlation_id,
+                "evaluation": decision["evaluation"],
+                "belief_proposals": belief_proposals.to_dict(),
+                "conversation_depth": reply.get("conversation_depth", 1),
+                "original_reply": {
+                    "body": reply.get("body", ""),
+                    "author": reply.get("author", ""),
+                    "reddit_id": reply.get("id", "")
+                },
+                "our_original_comment": {
+                    "body": our_comment.get("body", ""),
+                    "reddit_id": our_comment.get("id", "")
+                }
+            }
+
+            queue_id = await self.moderation.enqueue_for_review(
+                persona_id=persona_id,
+                content=draft,
+                metadata=metadata
+            )
+
+            logger.info(
+                f"Enqueued reply draft for review: {queue_id}",
+                extra={
+                    "persona_id": persona_id,
+                    "correlation_id": correlation_id,
+                    "belief_update_count": len(belief_proposals.updates),
+                }
+            )
+
+            return {
+                "action": "queued",
+                "queue_id": queue_id
+            }
+
+        # action == "drop"
+        reason = ", ".join(decision["evaluation"].get("flags", ["blocked"]))
+        logger.info(
+            f"Dropped reply draft: {reason}",
+            extra={"persona_id": persona_id, "correlation_id": correlation_id}
+        )
+
+        return {
+            "action": "dropped",
+            "reason": reason
+        }
 
     async def should_respond(self, persona_id: str, post: Dict[str, Any]) -> bool:
         """
@@ -513,27 +1188,40 @@ class AgentLoop:
         # Load persona
         persona = await self.memory_store.get_persona(persona_id)
 
-        # Build system prompt
+        # Build system prompt (high-level safety and role guidelines)
         config = persona.get("config", {})
         system_prompt = self._build_system_prompt(config)
 
-        # Assemble prompt from context
-        prompt = await self.retrieval.assemble_prompt(persona, context)
+        # Assemble rich prompt from context (includes personality_profile, writing_rules, voice_examples)
+        assembled_prompt = await self.retrieval.assemble_prompt(persona, context)
 
-        # User message
+        # User message with full context
         thread = context.get("thread", {})
-        user_message = f"Draft a comment in response to this Reddit post in r/{thread.get('subreddit')}."
+        user_message = f"""
+{assembled_prompt}
+
+---
+
+**Task**: Draft a SHORT Reddit comment (2-4 paragraphs max) in response to this post in r/{thread.get('subreddit')}.
+
+IMPORTANT:
+- Be concise - real Reddit users don't write essays
+- Get to the point immediately
+- Follow your writing rules exactly
+- Stay consistent with your beliefs and past statements above
+- Maintain your convictions - don't contradict yourself
+- Output ONLY the comment text, nothing else
+"""
 
         # Initial LLM call with tools enabled
-        # Use 1024 tokens to ensure enough room for a complete response
-        # after tool results are incorporated
+        # GPT-5.1 supports up to 128k output tokens - no artificial limit
         response = await self.llm_client.generate_response(
             system_prompt=system_prompt,
-            context=context,
+            context={},  # Context is now in user_message via assembled_prompt
             user_message=user_message,
             tools=AGENT_TOOLS,  # Enable tool calling
             temperature=0.7,
-            max_tokens=1024,
+            max_tokens=128000,
             correlation_id=correlation_id
         )
 
@@ -546,7 +1234,7 @@ class AgentLoop:
         # Build messages for potential continuation
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Context: {json.dumps(context)}\n\nMessage: {user_message}"},
+            {"role": "user", "content": user_message},
         ]
 
         # If there are tool calls, add assistant message with them
@@ -592,7 +1280,7 @@ class AgentLoop:
                 tool_results=tool_results,
                 tools=AGENT_TOOLS,  # Allow more tool calls if needed
                 temperature=0.7,
-                max_tokens=1024,
+                max_tokens=128000,
                 correlation_id=correlation_id
             )
 
@@ -914,6 +1602,7 @@ class AgentLoop:
         tone = config.get("tone", "neutral")
         style = config.get("style", "casual")
         values = config.get("values", [])
+        writing_rules = config.get("writing_rules", [])
 
         prompt = f"""You are a Reddit user with the following characteristics:
 
@@ -921,20 +1610,28 @@ Tone: {tone}
 Style: {style}
 Core Values: {", ".join(values) if values else "None specified"}
 
-Instructions:
+CRITICAL INSTRUCTIONS:
+- Keep your response SHORT and concise - 2-4 paragraphs maximum
+- Write like a real Reddit user, not an AI assistant
+- Get to the point quickly - no unnecessary preamble or filler
+- Follow ALL writing rules in the context below - they define your voice
 - Stay true to your beliefs and persona
 - Be respectful and follow Reddit etiquette
-- Cite evidence when making factual claims
-- Avoid contradicting your core beliefs without good reason
-- Keep responses concise and on-topic
-- Use markdown formatting when appropriate
 
 Never:
+- Write walls of text or rambling responses
+- Use generic AI-sounding phrases
 - Share personal information
 - Engage in harassment or hate speech
 - Spread misinformation
 - Violate Reddit's content policy
 """
+        # Add writing rules directly to system prompt for emphasis
+        if writing_rules:
+            prompt += "\nYOUR WRITING RULES (MUST FOLLOW):\n"
+            for rule in writing_rules:
+                prompt += f"- {rule}\n"
+
         return prompt
 
     def _calculate_backoff(self, consecutive_errors: int) -> float:
@@ -964,7 +1661,8 @@ async def run_agent(
     moderation: ModerationService,
     tool_executor: Optional[ToolExecutor] = None,
     stop_event: Optional[asyncio.Event] = None,
-    interval_seconds: int = 14400
+    interval_seconds: int = 14400,
+    max_conversation_depth: int = 5
 ) -> None:
     """
     Convenience function to run agent loop.
@@ -979,6 +1677,7 @@ async def run_agent(
         tool_executor: Optional tool executor (auto-created if None)
         stop_event: Optional stop event
         interval_seconds: Seconds between cycles (default: 14400 = 4 hours)
+        max_conversation_depth: Maximum reply chain depth (default: 5)
 
     Raises:
         ValueError: If persona not found or dependencies invalid
@@ -990,7 +1689,8 @@ async def run_agent(
         retrieval=retrieval,
         moderation=moderation,
         tool_executor=tool_executor,
-        interval_seconds=interval_seconds
+        interval_seconds=interval_seconds,
+        max_conversation_depth=max_conversation_depth
     )
 
     await loop.run(persona_id, stop_event)
