@@ -4,3 +4,5 @@ backend/data/
 image.png
 backend/.env
 DEPLOYMENT_GUIDE.md
+env.local
+frontend/.env.local

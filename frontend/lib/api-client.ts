@@ -255,6 +255,7 @@ export interface ModelBreakdownData {
   cost: number;
   count: number;
   percentage: number;
+  [key: string]: string | number;
 }
 
 export interface CostStatsResponse {
