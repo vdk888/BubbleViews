@@ -216,7 +216,7 @@ export default function CostsPage() {
                   cx="50%"
                   cy="50%"
                   outerRadius={100}
-                  label={(entry) => `${entry.model}: ${entry.percentage}%`}
+                  label={(entry: { name?: string; value?: number; percentage?: number }) => `${entry.name}: ${entry.percentage}%`}
                   labelLine={{ stroke: "#666", strokeWidth: 1 }}
                 >
                   {stats.model_breakdown.map((entry, index) => (
