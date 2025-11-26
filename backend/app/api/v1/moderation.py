@@ -4,12 +4,13 @@ Moderation queue endpoints.
 Handles pending post approval/rejection with belief evolution:
 - On approval: Post to Reddit AND apply belief changes
 - On rejection: No changes applied
+- On new belief creation: Automatically suggest and create relationships
 """
 
 import logging
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
@@ -19,7 +20,7 @@ from app.api.dependencies import get_current_user
 from app.core.database import get_db, async_session_maker
 from app.core.config import settings
 from app.models.pending_post import PendingPost
-from app.models.belief import BeliefNode, StanceVersion
+from app.models.belief import BeliefNode, StanceVersion, BeliefEdge
 from app.schemas.moderation import (
     PendingItem,
     ModerationActionRequest,
@@ -29,6 +30,8 @@ from app.schemas.moderation import (
 from app.services.reddit_client import AsyncPRAWClient
 from app.services.memory_store import SQLiteMemoryStore
 from app.services.belief_updater import BeliefUpdater
+from app.services.relationship_suggester import suggest_relationships
+from app.services.llm_client import OpenRouterClient
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +260,7 @@ async def _apply_belief_changes(
                     session.add(stance)
 
             results["new_belief_created"] = True
+            results["new_belief_id"] = belief_id
             logger.info(
                 "Created new belief from moderation approval",
                 extra={
@@ -266,6 +270,19 @@ async def _apply_belief_changes(
                     "reviewer": reviewer
                 }
             )
+
+            # Auto-create relationships if enabled
+            if getattr(settings, 'auto_link_beliefs', True):
+                relationship_results = await _auto_create_relationships(
+                    persona_id=persona_id,
+                    new_belief_id=belief_id,
+                    belief_title=new_belief.get("title", ""),
+                    belief_summary=new_belief.get("summary", ""),
+                    correlation_id=reddit_id,
+                )
+                results["relationships_created"] = relationship_results.get("edges_created", 0)
+                if relationship_results.get("errors"):
+                    results["errors"].extend(relationship_results["errors"])
 
         except Exception as e:
             logger.error(
@@ -277,6 +294,166 @@ async def _apply_belief_changes(
                 }
             )
             results["errors"].append(f"New belief: {str(e)}")
+
+    return results
+
+
+async def _auto_create_relationships(
+    persona_id: str,
+    new_belief_id: str,
+    belief_title: str,
+    belief_summary: str,
+    correlation_id: Optional[str] = None,
+) -> dict:
+    """
+    Automatically suggest and create relationships for a new belief.
+
+    Fetches existing beliefs for the persona, uses LLM to suggest relationships,
+    and creates BeliefEdge records for suggestions above the configured threshold.
+
+    Args:
+        persona_id: UUID of the persona
+        new_belief_id: UUID of the newly created belief
+        belief_title: Title of the new belief
+        belief_summary: Summary/description of the new belief
+        correlation_id: Optional request ID for tracing
+
+    Returns:
+        Dict with:
+            - edges_created: Number of edges successfully created
+            - suggestions_count: Total suggestions received from LLM
+            - errors: List of error messages (if any)
+    """
+    results = {"edges_created": 0, "suggestions_count": 0, "errors": []}
+
+    # Get threshold from settings (default 0.5)
+    min_weight = getattr(settings, 'auto_link_min_weight', 0.5)
+
+    try:
+        # Fetch existing beliefs for the persona (limit to most recent/relevant)
+        async with async_session_maker() as session:
+            stmt = (
+                select(BeliefNode)
+                .where(
+                    BeliefNode.persona_id == persona_id,
+                    BeliefNode.id != new_belief_id  # Exclude the new belief itself
+                )
+                .order_by(BeliefNode.updated_at.desc())
+                .limit(20)  # Limit to 20 most relevant beliefs
+            )
+            result = await session.execute(stmt)
+            existing_beliefs = result.scalars().all()
+
+        if not existing_beliefs:
+            logger.info(
+                "No existing beliefs to create relationships with",
+                extra={
+                    "correlation_id": correlation_id,
+                    "persona_id": persona_id,
+                    "new_belief_id": new_belief_id
+                }
+            )
+            return results
+
+        # Convert to dict format for relationship suggester
+        existing_beliefs_data = [
+            {
+                "id": b.id,
+                "title": b.title,
+                "summary": b.summary,
+                "confidence": b.current_confidence or 0.5
+            }
+            for b in existing_beliefs
+        ]
+
+        # Initialize LLM client for relationship suggestions
+        llm_client = OpenRouterClient()
+
+        # Get suggestions from LLM
+        suggestions = await suggest_relationships(
+            persona_id=persona_id,
+            belief_title=belief_title,
+            belief_summary=belief_summary,
+            existing_beliefs=existing_beliefs_data,
+            llm_client=llm_client,
+            max_suggestions=5,
+            correlation_id=correlation_id,
+        )
+
+        results["suggestions_count"] = len(suggestions)
+
+        if not suggestions:
+            logger.info(
+                "No relationship suggestions generated",
+                extra={
+                    "correlation_id": correlation_id,
+                    "persona_id": persona_id,
+                    "new_belief_id": new_belief_id,
+                    "existing_belief_count": len(existing_beliefs)
+                }
+            )
+            return results
+
+        # Filter suggestions by weight threshold and create edges
+        edges_to_create = []
+        for suggestion in suggestions:
+            if suggestion.weight >= min_weight:
+                edges_to_create.append({
+                    "id": str(uuid.uuid4()),
+                    "persona_id": persona_id,
+                    "source_id": new_belief_id,
+                    "target_id": suggestion.target_belief_id,
+                    "relation": suggestion.relation,
+                    "weight": suggestion.weight,
+                })
+
+        if not edges_to_create:
+            logger.info(
+                "No suggestions met minimum weight threshold",
+                extra={
+                    "correlation_id": correlation_id,
+                    "persona_id": persona_id,
+                    "new_belief_id": new_belief_id,
+                    "suggestions_count": len(suggestions),
+                    "min_weight": min_weight
+                }
+            )
+            return results
+
+        # Create BeliefEdge records
+        async with async_session_maker() as session:
+            async with session.begin():
+                for edge_data in edges_to_create:
+                    edge = BeliefEdge(**edge_data)
+                    session.add(edge)
+                    results["edges_created"] += 1
+
+        logger.info(
+            f"Auto-created {results['edges_created']} belief relationships for new belief {new_belief_id}",
+            extra={
+                "correlation_id": correlation_id,
+                "persona_id": persona_id,
+                "new_belief_id": new_belief_id,
+                "edges_created": results["edges_created"],
+                "suggestions_count": results["suggestions_count"],
+                "min_weight": min_weight
+            }
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Failed to auto-create relationships: {e}",
+            extra={
+                "correlation_id": correlation_id,
+                "persona_id": persona_id,
+                "new_belief_id": new_belief_id,
+                "error": str(e),
+                "error_type": type(e).__name__
+            },
+            exc_info=True
+        )
+        # Don't fail the whole approval - just log the error
+        results["errors"].append(f"Relationship creation: {str(e)}")
 
     return results
 
@@ -326,6 +503,41 @@ async def approve(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to publish to Reddit: {exc}"
         ) from exc
+
+    # Log interaction for activity feed and deduplication
+    try:
+        memory_store = SQLiteMemoryStore()
+        await memory_store.log_interaction(
+            persona_id=payload.persona_id,
+            content=item.content,
+            interaction_type=item.post_type or "comment",
+            metadata={
+                "reddit_id": reddit_id,
+                "parent_id": item.parent_id,
+                "subreddit": item.target_subreddit,
+                "approved_by": current_user.username,
+                "approved_at": datetime.utcnow().isoformat(),
+                "pending_post_id": str(item.id),
+            }
+        )
+        logger.info(
+            "Logged interaction for approved post",
+            extra={
+                "item_id": payload.item_id,
+                "persona_id": payload.persona_id,
+                "reddit_id": reddit_id,
+            }
+        )
+    except Exception as e:
+        # Don't fail the approval if logging fails, but log the error
+        logger.error(
+            "Failed to log interaction for approved post",
+            extra={
+                "item_id": payload.item_id,
+                "persona_id": payload.persona_id,
+                "error": str(e),
+            }
+        )
 
     # Apply belief changes after successful Reddit post
     metadata = item.get_draft_metadata()

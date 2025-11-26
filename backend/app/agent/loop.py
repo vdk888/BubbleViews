@@ -146,6 +146,10 @@ class AgentLoop:
         # Use provided stop event or internal
         stop_signal = stop_event or self._stop_event
 
+        # Log persona config summary for verification
+        config = persona.get("config", {})
+        self._log_persona_config_summary(persona, config)
+
         logger.info(
             f"Agent loop starting for persona {persona['reddit_username']}",
             extra={
@@ -1728,6 +1732,64 @@ Never:
         base_delay = min(2 ** consecutive_errors, 60)
         jitter = random.random()
         return base_delay + jitter
+
+    def _log_persona_config_summary(self, persona: Dict[str, Any], config: Dict[str, Any]) -> None:
+        """
+        Log a summary of persona config fields for verification.
+
+        Shows first ~50 chars of each field to verify correct persona is loaded.
+
+        Args:
+            persona: Persona dict with basic info
+            config: Persona config dict with settings
+        """
+        def truncate(text: Any, length: int = 50) -> str:
+            """Truncate text to specified length with ellipsis."""
+            if text is None:
+                return "(not set)"
+            if isinstance(text, list):
+                if not text:
+                    return "(empty list)"
+                return f"[{len(text)} items] {str(text[0])[:30]}..."
+            text_str = str(text)
+            if len(text_str) <= length:
+                return text_str
+            return text_str[:length] + "..."
+
+        summary = {
+            "display_name": persona.get("display_name"),
+            "reddit_username": persona.get("reddit_username"),
+            "tone": config.get("tone"),
+            "style": config.get("style"),
+            "core_values": truncate(config.get("values") or config.get("core_values")),
+            "personality_profile": truncate(config.get("personality_profile")),
+            "writing_rules": truncate(config.get("writing_rules")),
+            "voice_examples": truncate(config.get("voice_examples")),
+            "target_subreddits": truncate(config.get("target_subreddits")),
+            "interest_keywords": truncate(config.get("interest_keywords")),
+        }
+
+        logger.info(
+            f"Persona config loaded: {persona.get('display_name', persona.get('reddit_username'))}",
+            extra={"persona_config_summary": summary}
+        )
+
+        # Also log human-readable summary
+        logger.info(
+            f"  - tone: {summary['tone']}, style: {summary['style']}"
+        )
+        logger.info(
+            f"  - personality_profile: {summary['personality_profile']}"
+        )
+        logger.info(
+            f"  - writing_rules: {summary['writing_rules']}"
+        )
+        logger.info(
+            f"  - voice_examples: {summary['voice_examples']}"
+        )
+        logger.info(
+            f"  - target_subreddits: {summary['target_subreddits']}"
+        )
 
 
 async def run_agent(

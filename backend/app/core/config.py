@@ -85,6 +85,18 @@ class Settings(BaseSettings):
         description="Model for intelligent relationship suggestions between beliefs"
     )
 
+    # Belief Auto-Linking Configuration
+    auto_link_beliefs: bool = Field(
+        default=True,
+        description="Enable automatic relationship creation when new beliefs are created"
+    )
+    auto_link_min_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Minimum weight threshold for auto-creating belief edges (0.0-1.0)"
+    )
+
     # Agent Configuration
     agent_interval_seconds: int = Field(
         default=14400,

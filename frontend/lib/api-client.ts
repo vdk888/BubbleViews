@@ -503,15 +503,24 @@ class ApiClient {
       interval_seconds?: number;
       max_posts_per_cycle?: number;
       response_probability?: number;
+      engagement_config?: {
+        score_weight?: number;
+        comment_weight?: number;
+        min_probability?: number;
+        max_probability?: number;
+        probability_midpoint?: number;
+      };
     }
   ): Promise<{ persona_id: string; status: string; message: string; started_at?: string }> {
     return this.request("/api/v1/agent/start", {
       method: "POST",
       body: JSON.stringify({
         persona_id,
-        interval_seconds: options?.interval_seconds ?? 60,
+        // Don't send interval_seconds if not specified - let backend use default (14400 = 4 hours)
+        ...(options?.interval_seconds && { interval_seconds: options.interval_seconds }),
         max_posts_per_cycle: options?.max_posts_per_cycle ?? 5,
         response_probability: options?.response_probability ?? 0.3,
+        ...(options?.engagement_config && { engagement_config: options.engagement_config }),
       }),
     });
   }

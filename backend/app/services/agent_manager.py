@@ -147,7 +147,8 @@ class AgentManager:
         persona_id: str,
         interval_seconds: int = None,
         max_posts_per_cycle: int = 5,
-        response_probability: float = 0.3
+        response_probability: float = 0.3,
+        engagement_config: Dict[str, float] = None
     ) -> Dict[str, Any]:
         """
         Start agent loop for a persona.
@@ -160,6 +161,8 @@ class AgentManager:
             interval_seconds: Seconds between perception cycles (default: from AGENT_INTERVAL_SECONDS env var, or 14400 = 4 hours)
             max_posts_per_cycle: Max posts to process per cycle (default: 5)
             response_probability: Probability of responding to eligible posts (default: 0.3)
+            engagement_config: Configuration for engagement-based post selection (optional).
+                Keys: score_weight, comment_weight, min_probability, max_probability, probability_midpoint
 
         Returns:
             Status dict with:
@@ -197,7 +200,10 @@ class AgentManager:
             persona = await self._memory_store.get_persona(persona_id)
             if not persona:
                 raise ValueError(f"Persona not found: {persona_id}")
-            logger.info(f"Starting agent for persona: {persona['reddit_username']}")
+            logger.info(
+                f"Starting agent for persona: {persona['reddit_username']} "
+                f"(interval={interval_seconds}s, max_posts={max_posts_per_cycle}, engagement_config={engagement_config})"
+            )
         except Exception as e:
             logger.error(f"Failed to load persona {persona_id}: {e}")
             raise ValueError(f"Persona validation failed: {e}")
@@ -216,6 +222,7 @@ class AgentManager:
             interval_seconds=interval_seconds,
             max_posts_per_cycle=max_posts_per_cycle,
             response_probability=response_probability,
+            engagement_config=engagement_config,
         )
 
         # Create status tracking

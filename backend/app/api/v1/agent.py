@@ -17,12 +17,22 @@ router = APIRouter()
 
 
 # Request/Response models
+class EngagementConfig(BaseModel):
+    """Configuration for engagement-based post selection."""
+    score_weight: float = Field(1.0, ge=0.0, le=10.0, description="Weight for post upvotes (default: 1.0)")
+    comment_weight: float = Field(2.0, ge=0.0, le=10.0, description="Weight for comment count (default: 2.0)")
+    min_probability: float = Field(0.1, ge=0.0, le=1.0, description="Min response probability for low-engagement posts (default: 0.1)")
+    max_probability: float = Field(0.8, ge=0.0, le=1.0, description="Max response probability for high-engagement posts (default: 0.8)")
+    probability_midpoint: float = Field(20.0, ge=1.0, le=1000.0, description="Engagement score at ~50% probability (default: 20.0)")
+
+
 class AgentStartRequest(BaseModel):
     """Request to start an agent loop."""
     persona_id: str = Field(..., description="UUID of the persona to start agent for")
     interval_seconds: int | None = Field(None, ge=10, le=86400, description="Seconds between perception cycles (10-86400, optional - uses AGENT_INTERVAL_SECONDS env var or 14400 = 4 hours)")
     max_posts_per_cycle: int = Field(5, ge=1, le=20, description="Max posts to process per cycle (1-20)")
-    response_probability: float = Field(0.3, ge=0.0, le=1.0, description="Probability of responding to eligible posts (0.0-1.0)")
+    response_probability: float = Field(0.3, ge=0.0, le=1.0, description="Legacy: base probability (superseded by engagement_config)")
+    engagement_config: EngagementConfig | None = Field(None, description="Engagement-based post selection config (optional)")
 
     class Config:
         json_schema_extra = {
@@ -30,7 +40,13 @@ class AgentStartRequest(BaseModel):
                 "persona_id": "123e4567-e89b-12d3-a456-426614174000",
                 "interval_seconds": 14400,
                 "max_posts_per_cycle": 5,
-                "response_probability": 0.3
+                "engagement_config": {
+                    "score_weight": 1.0,
+                    "comment_weight": 2.0,
+                    "min_probability": 0.1,
+                    "max_probability": 0.8,
+                    "probability_midpoint": 20.0
+                }
             }
         }
 
@@ -168,11 +184,17 @@ async def start_agent(
         HTTPException 500: If services fail to initialize
     """
     try:
+        # Convert engagement_config to dict if provided
+        engagement_dict = None
+        if request.engagement_config:
+            engagement_dict = request.engagement_config.model_dump()
+
         result = await agent_manager.start_agent(
             persona_id=request.persona_id,
             interval_seconds=request.interval_seconds,
             max_posts_per_cycle=request.max_posts_per_cycle,
-            response_probability=request.response_probability
+            response_probability=request.response_probability,
+            engagement_config=engagement_dict
         )
         return AgentActionResponse(**result)
     except ValueError as e:
