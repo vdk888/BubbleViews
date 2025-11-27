@@ -146,7 +146,7 @@ class AgentManager:
         self,
         persona_id: str,
         interval_seconds: int = None,
-        max_posts_per_cycle: int = 5,
+        max_posts_per_cycle: int = 10,
         response_probability: float = 0.3,
         engagement_config: Dict[str, float] = None,
         max_post_age_hours: int = 24
@@ -160,7 +160,7 @@ class AgentManager:
         Args:
             persona_id: UUID of persona to run agent for
             interval_seconds: Seconds between perception cycles (default: from AGENT_INTERVAL_SECONDS env var, or 14400 = 4 hours)
-            max_posts_per_cycle: Max posts to process per cycle (default: 5)
+            max_posts_per_cycle: Max posts to process per cycle (default: 10)
             response_probability: Probability of responding to eligible posts (default: 0.3)
             engagement_config: Configuration for engagement-based post selection (optional).
                 Keys: score_weight, comment_weight, min_probability, max_probability, probability_midpoint

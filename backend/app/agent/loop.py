@@ -71,7 +71,7 @@ class AgentLoop:
         moderation: ModerationService,
         tool_executor: Optional[ToolExecutor] = None,
         interval_seconds: int = 14400,
-        max_posts_per_cycle: int = 5,
+        max_posts_per_cycle: int = 10,
         response_probability: float = 0.3,
         max_conversation_depth: int = 5,
         engagement_config: Optional[Dict[str, float]] = None,
@@ -93,7 +93,7 @@ class AgentLoop:
             tool_executor: Optional tool executor for LLM tool calls (auto-created if None)
             interval_seconds: Seconds between perception cycles (default: 14400 = 4 hours).
                 Note: This is now used as a fallback; natural timing is preferred.
-            max_posts_per_cycle: Max posts to process per cycle (default: 5)
+            max_posts_per_cycle: Max posts to process per cycle (default: 10)
             response_probability: Probability of responding to eligible posts (default: 0.3)
             max_conversation_depth: Maximum depth of reply chain to engage in (default: 5)
             engagement_config: Configuration for engagement-based post selection (optional).

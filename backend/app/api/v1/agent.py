@@ -30,7 +30,7 @@ class AgentStartRequest(BaseModel):
     """Request to start an agent loop."""
     persona_id: str = Field(..., description="UUID of the persona to start agent for")
     interval_seconds: int | None = Field(None, ge=10, le=86400, description="Seconds between perception cycles (10-86400, optional - uses AGENT_INTERVAL_SECONDS env var or 14400 = 4 hours)")
-    max_posts_per_cycle: int = Field(5, ge=1, le=20, description="Max posts to process per cycle (1-20)")
+    max_posts_per_cycle: int = Field(10, ge=1, le=20, description="Max posts to process per cycle (1-20)")
     response_probability: float = Field(0.3, ge=0.0, le=1.0, description="Legacy: base probability (superseded by engagement_config)")
     engagement_config: EngagementConfig | None = Field(None, description="Engagement-based post selection config (optional)")
     max_post_age_hours: int = Field(24, ge=1, le=168, description="Max age of posts to respond to in hours (1-168, default: 24)")
@@ -40,7 +40,7 @@ class AgentStartRequest(BaseModel):
             "example": {
                 "persona_id": "123e4567-e89b-12d3-a456-426614174000",
                 "interval_seconds": 14400,
-                "max_posts_per_cycle": 5,
+                "max_posts_per_cycle": 10,
                 "max_post_age_hours": 24,
                 "engagement_config": {
                     "score_weight": 1.0,
