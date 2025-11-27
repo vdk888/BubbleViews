@@ -483,13 +483,15 @@ async def run_systemctl(command: str) -> tuple[int, str, str]:
 )
 async def start_systemd_agent(
     request: SystemdAgentRequest,
-    current_user: CurrentActiveUser,
-    agent_manager: AgentManagerDep
+    current_user: CurrentActiveUser
 ) -> SystemdAgentStatusResponse:
     """Start the systemd agent service for a persona."""
     try:
-        # Verify persona exists and get name
-        persona = await agent_manager._memory_store.get_persona(request.persona_id)
+        # Verify persona exists and get name using direct DB access
+        from app.core.database import async_session_maker
+        from app.services.memory_store import SQLiteMemoryStore
+        memory_store = SQLiteMemoryStore(async_session_maker)
+        persona = await memory_store.get_persona(request.persona_id)
         if not persona:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -599,8 +601,7 @@ async def stop_systemd_agent(
     tags=["agent-systemd"]
 )
 async def get_systemd_agent_status(
-    current_user: CurrentActiveUser,
-    agent_manager: AgentManagerDep
+    current_user: CurrentActiveUser
 ) -> SystemdAgentStatusResponse:
     """Get the systemd agent service status."""
     try:
@@ -624,9 +625,12 @@ async def get_systemd_agent_status(
                 pass
 
         # Get persona name if we have an ID
-        if persona_id and agent_manager:
+        if persona_id:
             try:
-                persona = await agent_manager._memory_store.get_persona(persona_id)
+                from app.core.database import async_session_maker
+                from app.services.memory_store import SQLiteMemoryStore
+                memory_store = SQLiteMemoryStore(async_session_maker)
+                persona = await memory_store.get_persona(persona_id)
                 if persona:
                     persona_name = persona.get("display_name") or persona.get("reddit_username")
             except Exception:
