@@ -458,6 +458,8 @@ class SystemdAgentStatusResponse(BaseModel):
 
 async def run_systemctl(command: str) -> tuple[int, str, str]:
     """Run a systemctl command and return (returncode, stdout, stderr)."""
+    # Use full path to systemctl to avoid PATH issues
+    command = command.replace("systemctl", "/usr/bin/systemctl")
     proc = await asyncio.create_subprocess_shell(
         command,
         stdout=asyncio.subprocess.PIPE,
