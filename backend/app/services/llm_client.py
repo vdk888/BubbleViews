@@ -154,6 +154,20 @@ class OpenRouterClient(ILLMClient):
             {"role": "user", "content": user_content}
         ]
 
+        # DEBUG: Dump full prompt to file for inspection
+        try:
+            with open("/tmp/last_prompt.json", "w") as f:
+                json.dump({
+                    "model": model_to_use,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "system_prompt": system_prompt,
+                    "user_content": user_content,
+                    "context": context
+                }, f, indent=2, default=str)
+        except Exception:
+            pass  # Don't fail if we can't write debug file
+
         try:
             response = await self._call_with_retry(
                 model=model_to_use,

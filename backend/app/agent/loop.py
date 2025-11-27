@@ -767,7 +767,7 @@ IMPORTANT:
             user_message=user_message,
             tools=AGENT_TOOLS,
             temperature=0.7,
-            max_tokens=150,
+            max_tokens=128000,
             correlation_id=correlation_id
         )
 
@@ -822,7 +822,7 @@ IMPORTANT:
                 tool_results=tool_results,
                 tools=AGENT_TOOLS,
                 temperature=0.7,
-                max_tokens=150,
+                max_tokens=128000,
                 correlation_id=correlation_id
             )
 
