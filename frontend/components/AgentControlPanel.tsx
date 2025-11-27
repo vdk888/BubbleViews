@@ -5,11 +5,11 @@ import { apiClient } from "@/lib/api-client";
 
 interface AgentStatus {
   persona_id: string;
+  persona_name: string | null;
   status: string;
   started_at: string | null;
   last_activity: string | null;
   error_message: string | null;
-  cycle_count: number;
 }
 
 interface AgentControlPanelProps {
@@ -23,22 +23,28 @@ export function AgentControlPanel({ personaId }: AgentControlPanelProps) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
-    if (!personaId) return;
-
     try {
       setLoading(true);
-      const data = await apiClient.getAgentStatus(personaId);
-      setStatus(data);
+      // Use systemd status (global, not per-persona)
+      const data = await apiClient.getSystemdAgentStatus();
+      setStatus({
+        persona_id: data.persona_id || "",
+        persona_name: data.persona_name || null,
+        status: data.status,
+        started_at: null,
+        last_activity: null,
+        error_message: data.status === "failed" ? data.message : null,
+      });
       setError(null);
     } catch (err) {
       // Agent might not have been started yet - that's OK
       setStatus({
-        persona_id: personaId,
-        status: "not_running",
+        persona_id: personaId || "",
+        persona_name: null,
+        status: "stopped",
         started_at: null,
         last_activity: null,
         error_message: null,
-        cycle_count: 0,
       });
     } finally {
       setLoading(false);
@@ -47,8 +53,8 @@ export function AgentControlPanel({ personaId }: AgentControlPanelProps) {
 
   useEffect(() => {
     fetchStatus();
-    // Poll status every 30 seconds when agent is running
-    const interval = setInterval(fetchStatus, 30000);
+    // Poll status every 5 seconds
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
@@ -60,9 +66,12 @@ export function AgentControlPanel({ personaId }: AgentControlPanelProps) {
       setError(null);
 
       if (status?.status === "running") {
-        await apiClient.stopAgent(personaId);
+        await apiClient.stopSystemdAgent();
       } else {
-        await apiClient.startAgent(personaId);
+        const result = await apiClient.startSystemdAgent(personaId);
+        if (result.status === "failed") {
+          setError(result.message);
+        }
       }
 
       // Refetch status after action
@@ -74,33 +83,8 @@ export function AgentControlPanel({ personaId }: AgentControlPanelProps) {
     }
   };
 
-  const formatDateTime = (dateString: string | null) => {
-    if (!dateString) return "-";
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(date);
-  };
-
-  const formatDuration = (startedAt: string | null) => {
-    if (!startedAt) return "-";
-    const start = new Date(startedAt);
-    const now = new Date();
-    const diffMs = now.getTime() - start.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffDays > 0) return `${diffDays}j ${diffHours % 24}h`;
-    if (diffHours > 0) return `${diffHours}h ${diffMins % 60}m`;
-    return `${diffMins}m`;
-  };
-
   const isRunning = status?.status === "running";
-  const hasError = status?.status === "error";
+  const hasError = status?.status === "error" || status?.status === "failed";
 
   if (!personaId) {
     return (
@@ -114,7 +98,14 @@ export function AgentControlPanel({ personaId }: AgentControlPanelProps) {
     <div className="card glass shadow-strong p-6">
       {/* Header with status indicator */}
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-semibold text-[var(--text-secondary)]">Agent</p>
+        <div>
+          <p className="text-sm font-semibold text-[var(--text-secondary)]">Agent</p>
+          {isRunning && status?.persona_name && (
+            <p className="text-xs text-[var(--text-secondary)]">
+              Running as: {status.persona_name}
+            </p>
+          )}
+        </div>
         <span
           className={`inline-flex items-center gap-2 text-sm font-semibold ${
             isRunning
@@ -190,27 +181,15 @@ export function AgentControlPanel({ personaId }: AgentControlPanelProps) {
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-3">
         <div className="p-3 rounded-lg bg-[var(--background)]">
-          <p className="text-xs text-[var(--text-secondary)] mb-1">Cycles</p>
+          <p className="text-xs text-[var(--text-secondary)] mb-1">Status</p>
           <p className="text-lg font-bold text-[var(--primary)]">
-            {status?.cycle_count ?? 0}
+            {isRunning ? "Active" : hasError ? "Failed" : "Stopped"}
           </p>
         </div>
         <div className="p-3 rounded-lg bg-[var(--background)]">
-          <p className="text-xs text-[var(--text-secondary)] mb-1">Uptime</p>
-          <p className="text-lg font-bold text-[var(--primary)]">
-            {isRunning ? formatDuration(status?.started_at ?? null) : "-"}
-          </p>
-        </div>
-        <div className="p-3 rounded-lg bg-[var(--background)]">
-          <p className="text-xs text-[var(--text-secondary)] mb-1">Demarre</p>
-          <p className="text-sm font-semibold text-[var(--text-primary)]">
-            {formatDateTime(status?.started_at ?? null)}
-          </p>
-        </div>
-        <div className="p-3 rounded-lg bg-[var(--background)]">
-          <p className="text-xs text-[var(--text-secondary)] mb-1">Activite</p>
-          <p className="text-sm font-semibold text-[var(--text-primary)]">
-            {formatDateTime(status?.last_activity ?? null)}
+          <p className="text-xs text-[var(--text-secondary)] mb-1">Persona</p>
+          <p className="text-sm font-bold text-[var(--primary)] truncate">
+            {status?.persona_name || "-"}
           </p>
         </div>
       </div>
