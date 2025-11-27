@@ -502,7 +502,8 @@ async def start_systemd_agent(
         with open(AGENT_ENV_FILE, "w") as f:
             f.write(f"AGENT_PERSONA_ID={request.persona_id}\n")
 
-        # Restart the systemd service
+        # Reset failed state if any, then restart the systemd service
+        await run_systemctl(f"systemctl reset-failed {SYSTEMD_SERVICE_NAME}")
         returncode, stdout, stderr = await run_systemctl(
             f"systemctl restart {SYSTEMD_SERVICE_NAME}"
         )
