@@ -76,6 +76,10 @@ class AgentLoop:
         max_conversation_depth: int = 5,
         engagement_config: Optional[Dict[str, float]] = None,
         max_post_age_hours: int = 24,
+        # Natural timing config
+        active_hours_start: int = 8,
+        active_hours_end: int = 23,
+        burst_probability: float = 0.2,
     ):
         """
         Initialize agent loop with injected dependencies.
@@ -87,7 +91,8 @@ class AgentLoop:
             retrieval: Retrieval coordinator for context assembly
             moderation: Moderation service for content evaluation
             tool_executor: Optional tool executor for LLM tool calls (auto-created if None)
-            interval_seconds: Seconds between perception cycles (default: 14400 = 4 hours)
+            interval_seconds: Seconds between perception cycles (default: 14400 = 4 hours).
+                Note: This is now used as a fallback; natural timing is preferred.
             max_posts_per_cycle: Max posts to process per cycle (default: 5)
             response_probability: Probability of responding to eligible posts (default: 0.3)
             max_conversation_depth: Maximum depth of reply chain to engage in (default: 5)
@@ -95,6 +100,9 @@ class AgentLoop:
                 Keys: score_weight, comment_weight, min_probability, max_probability, probability_midpoint
             max_post_age_hours: Maximum age of posts to consider in hours (default: 24).
                 Posts older than this are skipped even if they appear in the "new" feed.
+            active_hours_start: Hour when active period starts (default: 8 = 8am)
+            active_hours_end: Hour when active period ends (default: 23 = 11pm)
+            burst_probability: Probability of quick follow-up after activity (default: 0.2)
         """
         self.reddit_client = reddit_client
         self.llm_client = llm_client
@@ -116,10 +124,16 @@ class AgentLoop:
         }
         self.max_post_age_hours = max_post_age_hours
 
+        # Natural timing config
+        self.active_hours_start = active_hours_start
+        self.active_hours_end = active_hours_end
+        self.burst_probability = burst_probability
+
         # Internal state
         self._stop_event = asyncio.Event()
         self._consecutive_errors = 0
         self._max_consecutive_errors = 5
+        self._last_was_burst = False
 
     async def run(self, persona_id: str, stop_event: Optional[asyncio.Event] = None) -> None:
         """
@@ -176,13 +190,30 @@ class AgentLoop:
 
             try:
                 # Execute one cycle
-                await self._execute_cycle(persona_id, correlation_id)
+                had_activity = await self._execute_cycle(persona_id, correlation_id)
 
                 # Reset error counter on success
                 self._consecutive_errors = 0
 
+                # Calculate natural delay based on activity and time of day
+                delay, self._last_was_burst = self._calculate_next_delay(
+                    had_activity, self._last_was_burst
+                )
+                delay_hours = delay / 3600
+
+                logger.info(
+                    f"Next cycle in {delay_hours:.1f} hours" + (" (burst)" if self._last_was_burst else ""),
+                    extra={
+                        "persona_id": persona_id,
+                        "delay_seconds": delay,
+                        "delay_hours": round(delay_hours, 2),
+                        "is_burst": self._last_was_burst,
+                        "had_activity": had_activity
+                    }
+                )
+
                 # Wait before next cycle
-                await asyncio.sleep(self.interval_seconds)
+                await asyncio.sleep(delay)
 
             except Exception as e:
                 self._consecutive_errors += 1
@@ -223,7 +254,7 @@ class AgentLoop:
         logger.info("Agent loop stop requested")
         self._stop_event.set()
 
-    async def _execute_cycle(self, persona_id: str, correlation_id: str) -> None:
+    async def _execute_cycle(self, persona_id: str, correlation_id: str) -> bool:
         """
         Execute one complete agent loop cycle.
 
@@ -243,9 +274,13 @@ class AgentLoop:
             persona_id: UUID of persona
             correlation_id: Request correlation ID for logging
 
+        Returns:
+            True if any posts or replies were processed, False otherwise
+
         Raises:
             Exception: Propagates any errors for cycle-level handling
         """
+        had_activity = False
         # Phase 1a: Perceive replies to our comments
         replies = await self.perceive_replies(persona_id)
 
@@ -260,6 +295,7 @@ class AgentLoop:
                 reply_correlation_id = f"{correlation_id}-reply-{reply['id']}"
                 try:
                     await self.process_reply(persona_id, reply, reply_correlation_id)
+                    had_activity = True  # Mark that we processed a reply
                 except Exception as e:
                     logger.error(
                         f"Failed to process reply {reply['id']}: {e}",
@@ -281,7 +317,7 @@ class AgentLoop:
                 f"No new posts found in cycle",
                 extra={"persona_id": persona_id, "correlation_id": correlation_id}
             )
-            return
+            return had_activity
 
         logger.info(
             f"Perceived {len(posts)} new posts",
@@ -299,7 +335,7 @@ class AgentLoop:
                 f"No eligible posts after filtering",
                 extra={"persona_id": persona_id, "correlation_id": correlation_id}
             )
-            return
+            return had_activity
 
         logger.info(
             f"{len(eligible_posts)} posts eligible for response",
@@ -320,6 +356,7 @@ class AgentLoop:
             post_correlation_id = f"{correlation_id}-{post['id']}"
             try:
                 await self._process_post(persona_id, post, post_correlation_id)
+                had_activity = True  # Mark that we processed a post
             except Exception as e:
                 logger.error(
                     f"Failed to process post {post['id']}: {e}",
@@ -327,6 +364,8 @@ class AgentLoop:
                     exc_info=True
                 )
                 # Continue with next post
+
+        return had_activity
 
     async def perceive(self, persona_id: str) -> List[Dict[str, Any]]:
         """
@@ -1763,6 +1802,46 @@ Never:
         base_delay = min(2 ** consecutive_errors, 60)
         jitter = random.random()
         return base_delay + jitter
+
+    def _calculate_next_delay(self, had_activity: bool, was_burst: bool) -> tuple:
+        """
+        Calculate next sleep delay with natural timing patterns.
+
+        Combines time-of-day awareness with activity bursts for human-like timing:
+        - Active hours (8am-11pm): 2-4 hour delays
+        - Night hours (11pm-8am): 5-8 hour delays
+        - After activity: 20% chance of a quick 15-45 min follow-up (burst)
+        - All delays have ±20% jitter for unpredictability
+
+        Args:
+            had_activity: Whether the last cycle posted/replied to anything
+            was_burst: Whether the last delay was a burst (prevents consecutive bursts)
+
+        Returns:
+            tuple: (delay_seconds, is_burst)
+        """
+        hour = datetime.now().hour
+
+        # Check if we should burst (quick follow-up after activity)
+        # Only burst if: had activity, wasn't already a burst, and random chance hits
+        if had_activity and not was_burst and random.random() < self.burst_probability:
+            base_delay = random.uniform(15, 45) * 60  # 15-45 minutes
+            is_burst = True
+        else:
+            # Normal timing based on time of day
+            if self.active_hours_start <= hour < self.active_hours_end:
+                # Active hours: 2-4 hours
+                base_delay = random.uniform(2, 4) * 3600
+            else:
+                # Night hours: 5-8 hours
+                base_delay = random.uniform(5, 8) * 3600
+            is_burst = False
+
+        # Add jitter (±20%) for unpredictability
+        jitter = random.uniform(-0.2, 0.2)
+        final_delay = base_delay * (1 + jitter)
+
+        return final_delay, is_burst
 
     def _log_persona_config_summary(self, persona: Dict[str, Any], config: Dict[str, Any]) -> None:
         """
