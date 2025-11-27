@@ -467,3 +467,41 @@ class IMemoryStore(ABC):
             - Can match either exact reddit_id or parent_id
         """
         pass
+
+    @abstractmethod
+    async def get_recent_interactions(
+        self,
+        persona_id: str,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Get last N interactions chronologically (by created_at DESC).
+
+        Returns recent interactions with word counts for length variation analysis.
+
+        Args:
+            persona_id: UUID of the persona
+            limit: Number of recent interactions to fetch (default: 5)
+
+        Returns:
+            List of recent interaction dictionaries:
+            [
+                {
+                    "content": "The interaction text",
+                    "word_count": 15,
+                    "subreddit": "AskReddit",
+                    "created_at": "2025-11-27T...",
+                    "interaction_type": "comment"
+                },
+                ...
+            ]
+
+        Raises:
+            ValueError: If persona not found or limit < 1
+
+        Note:
+            - Ordered by created_at DESC (newest first)
+            - Used for length variation analysis in prompts
+            - Word count calculated by splitting on whitespace
+        """
+        pass

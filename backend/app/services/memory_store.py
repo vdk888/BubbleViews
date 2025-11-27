@@ -982,3 +982,72 @@ class SQLiteMemoryStore(IMemoryStore):
                 }
                 for interaction in interactions
             ]
+
+    async def get_recent_interactions(
+        self,
+        persona_id: str,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Get last N interactions chronologically (by created_at DESC).
+
+        Returns recent interactions with word counts for length variation analysis.
+
+        Args:
+            persona_id: UUID of persona
+            limit: Number of recent interactions to fetch (default: 5)
+
+        Returns:
+            List of recent interaction dictionaries:
+            [
+                {
+                    "content": "The interaction text",
+                    "word_count": 15,
+                    "subreddit": "AskReddit",
+                    "created_at": "2025-11-27T...",
+                    "interaction_type": "comment"
+                },
+                ...
+            ]
+
+        Raises:
+            ValueError: If persona not found or limit < 1
+        """
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+
+        async with self._get_session() as session:
+            # Verify persona exists
+            stmt = select(Persona).where(Persona.id == persona_id)
+            result = await session.execute(stmt)
+            persona = result.scalar_one_or_none()
+
+            if not persona:
+                raise ValueError(f"Persona {persona_id} not found")
+
+            # Query recent interactions ordered by created_at DESC
+            stmt = (
+                select(Interaction)
+                .where(Interaction.persona_id == persona_id)
+                .order_by(desc(Interaction.created_at))
+                .limit(limit)
+            )
+
+            result = await session.execute(stmt)
+            interactions = result.scalars().all()
+
+            # Build result list with word counts
+            return [
+                {
+                    "content": interaction.content,
+                    "word_count": len(interaction.content.split()),
+                    "subreddit": interaction.subreddit,
+                    "created_at": (
+                        interaction.created_at.isoformat()
+                        if hasattr(interaction.created_at, "isoformat")
+                        else interaction.created_at
+                    ),
+                    "interaction_type": interaction.interaction_type,
+                }
+                for interaction in interactions
+            ]

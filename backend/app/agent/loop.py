@@ -748,11 +748,11 @@ class AgentLoop:
 
 ---
 
-**Task**: Draft a SHORT Reddit reply (1-3 paragraphs max) responding to their comment above.
+**Task**: Draft a Reddit reply responding to their comment above.
 
 IMPORTANT:
 - You are continuing a conversation - acknowledge what they said
-- Be concise - real Reddit conversations don't have long responses
+- Use the LENGTH definitions (SHORT/MEDIUM/LONG) - replies should usually be SHORT
 - Stay consistent with what you said in your previous comment
 - Follow your writing rules exactly
 - Maintain your convictions and beliefs
@@ -760,13 +760,14 @@ IMPORTANT:
 """
 
         # Generate response using LLM
+        # Lower max_tokens as safety net for replies
         response = await self.llm_client.generate_response(
             system_prompt=system_prompt,
             context={},
             user_message=user_message,
             tools=AGENT_TOOLS,
             temperature=0.7,
-            max_tokens=128000,
+            max_tokens=150,
             correlation_id=correlation_id
         )
 
@@ -821,7 +822,7 @@ IMPORTANT:
                 tool_results=tool_results,
                 tools=AGENT_TOOLS,
                 temperature=0.7,
-                max_tokens=128000,
+                max_tokens=150,
                 correlation_id=correlation_id
             )
 
@@ -1308,10 +1309,10 @@ IMPORTANT:
 
 ---
 
-**Task**: Draft a SHORT Reddit comment (2-4 paragraphs max) in response to this post in r/{thread.get('subreddit')}.
+**Task**: Draft a Reddit comment in response to this post in r/{thread.get('subreddit')}.
 
 IMPORTANT:
-- Be concise - real Reddit users don't write essays
+- Use the LENGTH definitions (SHORT/MEDIUM/LONG) provided in the system instructions
 - Get to the point immediately
 - Follow your writing rules exactly
 - Stay consistent with your beliefs and past statements above
@@ -1320,7 +1321,7 @@ IMPORTANT:
 """
 
         # Initial LLM call with tools enabled
-        # GPT-5.1 supports up to 128k output tokens - no artificial limit
+        # Lower max_tokens as safety net
         response = await self.llm_client.generate_response(
             system_prompt=system_prompt,
             context={},  # Context is now in user_message via assembled_prompt
@@ -1716,8 +1717,14 @@ Tone: {tone}
 Style: {style}
 Core Values: {", ".join(values) if values else "None specified"}
 
+LENGTH DEFINITIONS (STRICT):
+- SHORT: 10-20 words, ONE brief sentence
+- MEDIUM: 2-3 sentences, ~30-50 words
+- LONG: 3-4 sentences, ~60-100 words (use sparingly)
+
+Default to SHORT. Follow your writing rules for when to use each length.
+
 CRITICAL INSTRUCTIONS:
-- Keep your response SHORT and concise - 2-4 paragraphs maximum
 - Write like a real Reddit user, not an AI assistant
 - Get to the point quickly - no unnecessary preamble or filler
 - Follow ALL writing rules in the context below - they define your voice

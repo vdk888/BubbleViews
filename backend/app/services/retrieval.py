@@ -514,9 +514,10 @@ class RetrievalCoordinator:
         1. Persona description (with rich personality profile)
         2. Writing rules (behavioral constraints)
         3. Voice examples (few-shot demonstrations)
-        4. Current beliefs with confidence
-        5. Past relevant statements
-        6. Thread context
+        4. Recent post history (for length variation)
+        5. Current beliefs with confidence
+        6. Past relevant statements
+        7. Thread context
 
         Args:
             persona_config: Persona configuration
@@ -541,6 +542,7 @@ class RetrievalCoordinator:
 
         # 1. Persona Section (enhanced with rich personality)
         persona_name = persona_config.get("display_name", "Agent")
+        persona_id = persona_config.get("id")
         config = persona_config.get("config", {})
         tone = config.get("tone", "neutral")
         style = config.get("style", "casual")
@@ -589,7 +591,60 @@ Use them as reference for tone, phrasing, and personality:\n\n"""
                 examples_section += f"Example {i}:\n\"{example}\"\n\n"
             sections.append(examples_section)
 
-        # 4. Beliefs Section
+        # 4. Recent Post History Section (for length variation)
+        if persona_id:
+            try:
+                recent_interactions = await self.memory_store.get_recent_interactions(
+                    persona_id=persona_id,
+                    limit=4
+                )
+
+                if recent_interactions:
+                    history_section = "# Your Recent Posts (for length variation)\n"
+
+                    # Classify lengths
+                    length_counts = {"SHORT": 0, "MEDIUM": 0, "LONG": 0}
+                    for interaction in recent_interactions:
+                        word_count = interaction["word_count"]
+                        if word_count <= 20:
+                            length_counts["SHORT"] += 1
+                        elif word_count <= 50:
+                            length_counts["MEDIUM"] += 1
+                        else:
+                            length_counts["LONG"] += 1
+
+                    # Provide guidance based on recent patterns
+                    if length_counts["SHORT"] >= 3:
+                        history_section += "Your last 4 comments were mostly SHORT (~15 words each).\n"
+                        history_section += "Consider making this one MEDIUM or LONG for variety.\n\n"
+                    elif length_counts["LONG"] >= 2:
+                        history_section += "Your recent comments have been LONG.\n"
+                        history_section += "Consider making this one SHORT or MEDIUM for variety.\n\n"
+                    else:
+                        history_section += "Good length variety in recent posts.\n\n"
+
+                    history_section += "Recent history:\n"
+                    for i, interaction in enumerate(recent_interactions, 1):
+                        word_count = interaction["word_count"]
+                        if word_count <= 20:
+                            length_label = "SHORT"
+                        elif word_count <= 50:
+                            length_label = "MEDIUM"
+                        else:
+                            length_label = "LONG"
+
+                        # Calculate time ago (simple format)
+                        created_at = interaction.get("created_at", "")
+                        subreddit = interaction.get("subreddit", "unknown")
+
+                        history_section += f"{i}. r/{subreddit} - {word_count} words ({length_label})\n"
+
+                    sections.append(history_section)
+            except Exception:
+                # If fetching recent interactions fails, skip this section silently
+                pass
+
+        # 5. Beliefs Section
         beliefs = context.get("beliefs", [])
         if beliefs:
             beliefs_section = "# Current Beliefs\n"
