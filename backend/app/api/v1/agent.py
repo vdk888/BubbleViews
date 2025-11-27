@@ -483,8 +483,8 @@ async def run_systemctl(command: str) -> tuple[int, str, str]:
 )
 async def start_systemd_agent(
     request: SystemdAgentRequest,
-    current_user: CurrentActiveUser = None,
-    agent_manager: AgentManagerDep = None
+    current_user: CurrentActiveUser,
+    agent_manager: AgentManagerDep
 ) -> SystemdAgentStatusResponse:
     """Start the systemd agent service for a persona."""
     try:
@@ -554,7 +554,7 @@ async def start_systemd_agent(
     tags=["agent-systemd"]
 )
 async def stop_systemd_agent(
-    current_user: CurrentActiveUser = None
+    current_user: CurrentActiveUser
 ) -> SystemdAgentStatusResponse:
     """Stop the systemd agent service."""
     try:
@@ -599,8 +599,8 @@ async def stop_systemd_agent(
     tags=["agent-systemd"]
 )
 async def get_systemd_agent_status(
-    current_user: CurrentActiveUser = None,
-    agent_manager: AgentManagerDep = None
+    current_user: CurrentActiveUser,
+    agent_manager: AgentManagerDep
 ) -> SystemdAgentStatusResponse:
     """Get the systemd agent service status."""
     try:
