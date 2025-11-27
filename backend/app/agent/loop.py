@@ -348,8 +348,14 @@ class AgentLoop:
             reverse=True
         )
 
-        # Limit to max posts per cycle
-        posts_to_process = eligible_posts[:self.max_posts_per_cycle]
+        # Randomize number of posts (1 to max) for more natural behavior
+        num_posts = random.randint(1, min(len(eligible_posts), self.max_posts_per_cycle))
+        posts_to_process = eligible_posts[:num_posts]
+
+        logger.info(
+            f"Processing {num_posts} posts this cycle (max: {self.max_posts_per_cycle})",
+            extra={"persona_id": persona_id, "correlation_id": correlation_id, "num_posts": num_posts}
+        )
 
         # Process each post
         for post in posts_to_process:
